@@ -30,7 +30,6 @@ export default function LoginScreen({ navigation }) {
         <View style={styles.iconCircle}>
            <Ionicons name="person" size={40} color="white" />
         </View>
-        {/* ✅ UPDATED NAME */}
         <Text style={styles.title}>FuelCore Login</Text>
         
         <TextInput 
@@ -51,9 +50,6 @@ export default function LoginScreen({ navigation }) {
         <TouchableOpacity style={styles.btn} onPress={handleLogin}>
           <Text style={styles.btnText}>Login</Text>
         </TouchableOpacity>
-
-        <Text style={{marginTop:15, color:'#888', fontSize:12}}>Default Admin: admin / 1234</Text>
-        <Text style={{color:'#888', fontSize:12}}>Default Operator: operator / 1234</Text>
       </View>
     </View>
   );

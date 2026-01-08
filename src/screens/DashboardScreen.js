@@ -4,8 +4,10 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { db } from '../database/db';
 import { AuthContext } from '../context/AuthContext'; 
+// 🛡️ STORAGE IMPORTS
 import * as FileSystem from 'expo-file-system/legacy'; 
 import * as Sharing from 'expo-sharing';
+import * as DocumentPicker from 'expo-document-picker'; // ✅ NEW IMPORT
 
 export default function DashboardScreen({ navigation }) {
   const { user, logout } = useContext(AuthContext); 
@@ -47,16 +49,72 @@ export default function DashboardScreen({ navigation }) {
 
   useFocusEffect(React.useCallback(() => { fetchStats(); }, []));
 
+  // ☁️ BACKUP FUNCTION
   const exportDatabase = async () => {
     try {
       const dbName = 'fuel_crm_v6.db'; 
       const sourceUri = `${FileSystem.documentDirectory}SQLite/${dbName}`;
       const targetUri = `${FileSystem.cacheDirectory}${dbName}`;
+      
       await FileSystem.copyAsync({ from: sourceUri, to: targetUri });
+      
       if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(targetUri, { dialogTitle: 'Backup DB', mimeType: 'application/x-sqlite3', UTI: 'public.database' });
+        await Sharing.shareAsync(targetUri, { 
+            dialogTitle: 'Backup DB', 
+            mimeType: 'application/x-sqlite3', 
+            UTI: 'public.database' 
+        });
       }
     } catch (error) { Alert.alert("Backup Failed", error.message); }
+  };
+
+  // 🔄 RESTORE FUNCTION (NEW)
+  const restoreDatabase = async () => {
+    try {
+      // 1. Pick the file
+      const result = await DocumentPicker.getDocumentAsync({
+        copyToCacheDirectory: true,
+        type: '*/*' // Accepts any file, but user should select .db
+      });
+
+      if (result.canceled) return;
+
+      // 2. Confirm Overwrite
+      Alert.alert(
+        "⚠️ Dangerous Action",
+        "Restoring will DELETE all current data on this phone and replace it with the backup. Are you sure?",
+        [
+          { text: "Cancel", style: "cancel" },
+          { 
+            text: "Yes, Restore", 
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                const selectedFile = result.assets[0].uri;
+                const dbName = 'fuel_crm_v6.db';
+                const targetUri = `${FileSystem.documentDirectory}SQLite/${dbName}`;
+
+                // 3. Delete old DB & Replace
+                // We use 'deleteAsync' with 'idempotent: true' so it doesn't crash if file is missing
+                await FileSystem.deleteAsync(targetUri, { idempotent: true });
+                
+                await FileSystem.copyAsync({
+                  from: selectedFile,
+                  to: targetUri
+                });
+
+                Alert.alert("✅ Success", "Database Restored! Please restart the app to see the changes.");
+              } catch (e) {
+                Alert.alert("Restore Failed", e.message);
+              }
+            } 
+          }
+        ]
+      );
+
+    } catch (err) {
+      console.log(err);
+    }
   };
 
   return (
@@ -64,7 +122,6 @@ export default function DashboardScreen({ navigation }) {
       <ScrollView>
       <View style={styles.header}>
          <View>
-            {/* ✅ UPDATED NAME */}
             <Text style={styles.headerTitle}>⛽ FuelCore CRM</Text>
             <Text style={styles.headerSubtitle}>User: {user?.username} ({user?.role})</Text>
          </View>
@@ -137,11 +194,19 @@ export default function DashboardScreen({ navigation }) {
             <Text style={styles.actionText}>Settings</Text>
         </TouchableOpacity>
 
+        {/* ☁️ BACKUP & RESTORE (ADMIN ONLY) */}
         {user?.role === 'Admin' && (
-           <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#333'}]} onPress={exportDatabase}>
-             <Ionicons name="cloud-upload" size={24} color="#fff" />
-             <Text style={styles.actionText}>Backup</Text>
-           </TouchableOpacity>
+           <>
+             <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#333'}]} onPress={exportDatabase}>
+               <Ionicons name="cloud-upload" size={24} color="#fff" />
+               <Text style={styles.actionText}>Backup</Text>
+             </TouchableOpacity>
+
+             <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#555'}]} onPress={restoreDatabase}>
+               <Ionicons name="cloud-download" size={24} color="#fff" />
+               <Text style={styles.actionText}>Restore</Text>
+             </TouchableOpacity>
+           </>
         )}
       </View>
       </ScrollView>

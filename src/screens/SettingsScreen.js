@@ -9,6 +9,7 @@ export default function SettingsScreen({ navigation }) {
   const [prices, setPrices] = useState({ petrol: '', diesel: '' });
   const [loading, setLoading] = useState(false);
   const [loyaltyEnabled, setLoyaltyEnabled] = useState(true);
+  const [newUser, setNewUser] = useState({ username: '', password: '', role: 'Operator' });
 
   useEffect(() => {
     fetchCurrentPrices();
@@ -47,7 +48,9 @@ export default function SettingsScreen({ navigation }) {
       await db.runAsync('UPDATE tanks SET sell_price = ? WHERE fuel_type = ?', [newPetrolPrice, 'Petrol']);
       await db.runAsync('UPDATE tanks SET sell_price = ? WHERE fuel_type = ?', [newDieselPrice, 'Diesel']);
       
-      await logAudit(user.username, 'SETTINGS_UPDATE', `Updated Prices: P=${newPetrolPrice}, D=${newDieselPrice}`);
+      if (user) {
+        await logAudit(user.username, 'SETTINGS_UPDATE', `Updated Prices: P=${newPetrolPrice}, D=${newDieselPrice}`);
+      }
       
       Alert.alert("✅ Success", "Fuel Prices Updated Globally");
     } catch (error) {
@@ -57,6 +60,33 @@ export default function SettingsScreen({ navigation }) {
       setLoading(false);
     }
   };
+
+  const createNewUser = async () => {
+    if (!newUser.username || !newUser.password) return Alert.alert("Error", "Please enter username and password");
+
+    try {
+      const check = await db.getAllAsync('SELECT * FROM users WHERE username = ?', [newUser.username]);
+      if (check.length > 0) {
+        return Alert.alert("Error", "Username already exists");
+      }
+
+      await db.runAsync('INSERT INTO users (username, password, role) VALUES (?, ?, ?)', 
+        [newUser.username, newUser.password, newUser.role]);
+
+      if (user) {
+        await logAudit(user.username, 'USER_CREATE', `Created new user: ${newUser.username} (${newUser.role})`);
+      }
+      
+      Alert.alert("Success", `User '${newUser.username}' created successfully!`);
+      setNewUser({ username: '', password: '', role: 'Operator' }); 
+    } catch (e) {
+      Alert.alert("Error", "Could not create user");
+      console.log(e);
+    }
+  };
+
+  // 🛡️ Safety Check: If user is missing (logged out), show nothing or a loading view
+  if (!user) return <View style={styles.container} />;
 
   return (
     <ScrollView style={styles.container}>
@@ -98,6 +128,59 @@ export default function SettingsScreen({ navigation }) {
         )}
       </View>
 
+      {/* 🔐 UPDATED CHECK: Added '?' to prevent crashes */}
+      {user?.role === 'Admin' && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>👤 User Management</Text>
+          <Text style={styles.subText}>Add new staff members to the system.</Text>
+
+          <View style={styles.inputRow}>
+            <Text style={styles.label}>New Username:</Text>
+            <TextInput 
+              style={styles.input} 
+              value={newUser.username}
+              onChangeText={t => setNewUser({...newUser, username: t})}
+              placeholder="e.g. manager1"
+              autoCapitalize="none"
+            />
+          </View>
+
+          <View style={styles.inputRow}>
+            <Text style={styles.label}>Password:</Text>
+            <TextInput 
+              style={styles.input} 
+              value={newUser.password}
+              onChangeText={t => setNewUser({...newUser, password: t})}
+              placeholder="Enter password"
+              secureTextEntry
+            />
+          </View>
+
+          <View style={styles.inputRow}>
+            <Text style={styles.label}>Role:</Text>
+            <View style={{flexDirection:'row'}}>
+              <TouchableOpacity 
+                style={[styles.roleBtn, newUser.role === 'Operator' && styles.roleBtnActive]}
+                onPress={() => setNewUser({...newUser, role: 'Operator'})}
+              >
+                <Text style={[styles.roleText, newUser.role === 'Operator' && styles.roleTextActive]}>Operator</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.roleBtn, newUser.role === 'Admin' && styles.roleBtnActive]}
+                onPress={() => setNewUser({...newUser, role: 'Admin'})}
+              >
+                <Text style={[styles.roleText, newUser.role === 'Admin' && styles.roleTextActive]}>Admin</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <TouchableOpacity style={[styles.saveBtn, {backgroundColor:'#673ab7'}]} onPress={createNewUser}>
+              <Text style={styles.saveBtnText}>Create User</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>🎁 Loyalty Program</Text>
         <View style={styles.rowBetween}>
@@ -107,27 +190,20 @@ export default function SettingsScreen({ navigation }) {
         <Text style={styles.subText}>Current Rule: 1 Liter = 1 Point. 10 Points = ₹1 Discount.</Text>
       </View>
 
-      {/* 3. About & Help - UPDATED NAME */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>ℹ️ About & Help</Text>
-        
         <View style={styles.infoRow}>
           <Ionicons name="business" size={20} color="#666" />
           <Text style={styles.infoText}>FuelCore Station CRM</Text>
         </View>
         <View style={styles.infoRow}>
           <Ionicons name="call" size={20} color="#666" />
-          <Text style={styles.infoText}>Support: +91 98765 43210</Text>
+          <Text style={styles.infoText}>Support: +91 XXXXXXXXXX</Text>
         </View>
         <View style={styles.infoRow}>
           <Ionicons name="code-slash" size={20} color="#666" />
           <Text style={styles.infoText}>Version: 5.3.0 (Rebranded)</Text>
         </View>
-
-        <TouchableOpacity style={styles.helpBtn} onPress={() => Alert.alert("User Guide", "1. Dashboard: View Stats & Alerts\n2. New Sale: Bill Customers\n3. Inventory: Check Fuel Levels")}>
-           <Ionicons name="book" size={18} color="#2196f3" />
-           <Text style={{marginLeft:10, color:'#2196f3', fontWeight:'bold'}}>Read User Guide</Text>
-        </TouchableOpacity>
       </View>
 
     </ScrollView>
@@ -147,5 +223,8 @@ const styles = StyleSheet.create({
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom:10 },
   infoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
   infoText: { marginLeft: 10, fontSize: 16, color: '#555' },
-  helpBtn: { marginTop:10, flexDirection:'row', alignItems:'center', padding:10, backgroundColor:'#e3f2fd', borderRadius:8, justifyContent:'center' }
+  roleBtn: { flex:1, padding:10, borderWidth:1, borderColor:'#ddd', alignItems:'center', marginRight:10, borderRadius:8 },
+  roleBtnActive: { backgroundColor: '#2196f3', borderColor:'#2196f3' },
+  roleText: { color: '#666' },
+  roleTextActive: { color: 'white', fontWeight:'bold' }
 });
