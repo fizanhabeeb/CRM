@@ -23,7 +23,8 @@
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.zanif.fuelcorecrm"
     },
     "web": {
       "favicon": "./assets/icon.png"
