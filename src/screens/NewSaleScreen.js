@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, FlatList, StyleSheet, Switch, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, FlatList, StyleSheet, Switch } from 'react-native';
 import { db, logAudit } from '../database/db'; 
 import { Ionicons } from '@expo/vector-icons';
 import { AuthContext } from '../context/AuthContext'; 
@@ -11,7 +11,7 @@ export default function NewSaleScreen({ navigation }) {
   const [customers, setCustomers] = useState([]);
   const [customer, setCustomer] = useState(null);
   const [activeOffers, setActiveOffers] = useState([]);
-  const [fetchingPump, setFetchingPump] = useState(false);
+  
   // Auto-Prices State
   const [defaultPrices, setDefaultPrices] = useState({ Petrol: '100', Diesel: '90' });
 
@@ -27,18 +27,15 @@ export default function NewSaleScreen({ navigation }) {
       const oRes = await db.getAllAsync('SELECT * FROM offers WHERE is_active = 1');
       setActiveOffers(oRes);
       
-      // ⚙️ FETCH PRICES FROM SETTINGS (TANKS)
       const tRes = await db.getAllAsync('SELECT * FROM tanks');
       const pPrice = tRes.find(t=>t.fuel_type === 'Petrol')?.sell_price || 100;
       const dPrice = tRes.find(t=>t.fuel_type === 'Diesel')?.sell_price || 90;
       setDefaultPrices({ Petrol: String(pPrice), Diesel: String(dPrice) });
       
-      // Set initial price
       setTxn(prev => ({ ...prev, price: String(pPrice) }));
     })();
   }, []);
 
-  // Update Price when Fuel Type changes
   useEffect(() => {
     if (defaultPrices[txn.fuelType]) {
       setTxn(prev => ({ ...prev, price: defaultPrices[txn.fuelType] }));
@@ -67,16 +64,6 @@ export default function NewSaleScreen({ navigation }) {
     const msg = `⛽ Fuel Station Receipt\n\nInv: ${inv}\nVehicle: ${txn.vehicleNo}\nAmount: ₹${amount}\nPoints Earned: ${points}\n\nThank you for visiting!`;
     const url = `whatsapp://send?text=${encodeURIComponent(msg)}&phone=${customer.phone}`;
     Linking.openURL(url).catch(() => { Alert.alert("Error", "WhatsApp not installed"); });
-  };
-
-  const fetchFromPump = () => {
-    setFetchingPump(true);
-    setTimeout(() => {
-        const randomQty = (Math.random() * (50 - 5) + 5).toFixed(2);
-        setTxn(prev => ({ ...prev, qty: randomQty }));
-        setFetchingPump(false);
-        Alert.alert("✅ Pump Data Fetched", `Dispenser 1 reported: ${randomQty} Liters`);
-    }, 2000); 
   };
 
   const generateBill = async () => {
@@ -145,7 +132,7 @@ export default function NewSaleScreen({ navigation }) {
   return (
     <ScrollView style={styles.formContainer}>
       
-      {/* 🎁 LOYALTY SUGGESTION (Auto-Detect) */}
+      {/* 🎁 LOYALTY SUGGESTION */}
       {customer.loyalty_points >= 50 && (
         <View style={styles.suggestionBox}>
            <Ionicons name="bulb" size={24} color="#ff9800" />
@@ -158,8 +145,15 @@ export default function NewSaleScreen({ navigation }) {
 
       <View style={styles.section}>
         <Text style={styles.label}>Vehicle & Fuel</Text>
+        
         <View style={{flexDirection:'row', alignItems:'center'}}>
-          <TextInput style={[styles.input, {flex:1}]} placeholder="Vehicle No" value={txn.vehicleNo} onChangeText={t=>setTxn({...txn, vehicleNo:t})} />
+          <TextInput 
+            style={[styles.input, {flex:1}]} 
+            placeholder="Vehicle No" 
+            placeholderTextColor="#999"
+            value={txn.vehicleNo} 
+            onChangeText={t=>setTxn({...txn, vehicleNo:t})} 
+          />
           <TouchableOpacity style={{backgroundColor:'#2196f3', padding:10, borderRadius:8, marginLeft:5, marginBottom:10}}
              onPress={() => navigation.navigate('QRScanner', { onScan: (data) => setTxn(prev => ({...prev, vehicleNo: data})) })}>
              <Ionicons name="qr-code" size={24} color="white" />
@@ -178,16 +172,26 @@ export default function NewSaleScreen({ navigation }) {
         </View>
 
         <View style={{flexDirection:'row'}}>
-           <TextInput style={[styles.input, {flex:1, marginRight:5}]} keyboardType="numeric" placeholder="Price" value={txn.price} onChangeText={t=>setTxn({...txn, price:t})} />
-           <TextInput style={[styles.input, {flex:1, marginLeft:5}]} keyboardType="numeric" placeholder="Qty (L)" value={txn.qty.toString()} onChangeText={t=>setTxn({...txn, qty:t})} />
+           <TextInput 
+             style={[styles.input, {flex:1, marginRight:5}]} 
+             keyboardType="numeric" 
+             placeholder="Price" 
+             placeholderTextColor="#999"
+             value={txn.price} 
+             onChangeText={t=>setTxn({...txn, price:t})} 
+           />
+           <TextInput 
+             style={[styles.input, {flex:1, marginLeft:5}]} 
+             keyboardType="numeric" 
+             placeholder="Qty (L)" 
+             placeholderTextColor="#999"
+             value={txn.qty.toString()} 
+             onChangeText={t=>setTxn({...txn, qty:t})} 
+           />
         </View>
+        
+        {/* ❌ REMOVED "Fetch from Dispenser" BUTTON HERE */}
 
-        <TouchableOpacity style={[styles.pumpBtn, fetchingPump && {backgroundColor:'#ccc'}]} onPress={fetchFromPump} disabled={fetchingPump}>
-          {fetchingPump ? <ActivityIndicator color="white" /> : <Ionicons name="wifi" size={20} color="white" />}
-          <Text style={{color:'white', fontWeight:'bold', marginLeft: 5}}>
-             {fetchingPump ? " Reading Sensor..." : " Fetch from Dispenser 1"}
-          </Text>
-        </TouchableOpacity>
       </View>
 
       <View style={styles.section}>
@@ -235,7 +239,6 @@ const styles = StyleSheet.create({
   saveBtn: { backgroundColor: '#2196f3', padding: 15, borderRadius: 8, alignItems: 'center', marginBottom: 40 },
   saveBtnText: { color: 'white', fontWeight: 'bold' },
   listItem: { padding: 15, borderBottomWidth: 1, borderColor: '#eee', backgroundColor:'white' },
-  pumpBtn: { flexDirection: 'row', backgroundColor: '#673ab7', padding: 12, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginTop: 5 },
   // Suggestion Styles
   suggestionBox: { flexDirection:'row', backgroundColor:'#fff3e0', padding:15, borderRadius:10, marginBottom:20, alignItems:'center', borderWidth:1, borderColor:'#ffb74d' }
 });

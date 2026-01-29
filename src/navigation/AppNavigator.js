@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useContext } from 'react';
+import { View, ActivityIndicator } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
-import { AuthProvider } from '../context/AuthContext'; 
+import { AuthContext, AuthProvider } from '../context/AuthContext'; 
 
 // Import Screens
 import LoginScreen from '../screens/LoginScreen'; 
@@ -16,7 +17,7 @@ import OffersScreen from '../screens/OffersScreen';
 import AuditLogScreen from '../screens/AuditLogScreen'; 
 import QRScannerScreen from '../screens/QRScannerScreen'; 
 import InventoryScreen from '../screens/InventoryScreen'; 
-import SettingsScreen from '../screens/SettingsScreen'; // ✅ 1. Import Settings
+import SettingsScreen from '../screens/SettingsScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -30,8 +31,6 @@ function HomeStack() {
       <Stack.Screen name="AuditLogs" component={AuditLogScreen} options={{title:'Security Audit Logs'}} />
       <Stack.Screen name="QRScanner" component={QRScannerScreen} options={{title:'Scan Vehicle QR'}} /> 
       <Stack.Screen name="Inventory" component={InventoryScreen} options={{title:'Fuel Inventory'}} /> 
-      
-      {/* ✅ 2. Register Settings Screen Here */}
       <Stack.Screen name="Settings" component={SettingsScreen} options={{title:'System Settings'}} />
     </Stack.Navigator>
   );
@@ -67,13 +66,33 @@ function MainTabs() {
   );
 }
 
+// Wrapper to handle Auth State
+function RootNavigator() {
+  const { user, isLoading } = useContext(AuthContext);
+
+  if (isLoading) {
+    return (
+      <View style={{flex:1, justifyContent:'center', alignItems:'center'}}>
+        <ActivityIndicator size="large" color="#2196f3" />
+      </View>
+    );
+  }
+
+  return (
+    <Stack.Navigator screenOptions={{headerShown: false}}>
+      {user ? (
+        <Stack.Screen name="MainTabs" component={MainTabs} />
+      ) : (
+        <Stack.Screen name="Login" component={LoginScreen} />
+      )}
+    </Stack.Navigator>
+  );
+}
+
 export default function AppNavigator() {
   return (
     <AuthProvider>
-      <Stack.Navigator screenOptions={{headerShown: false}}>
-        <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="MainTabs" component={MainTabs} />
-      </Stack.Navigator>
+      <RootNavigator />
     </AuthProvider>
   );
 }

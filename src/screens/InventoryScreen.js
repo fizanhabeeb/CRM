@@ -72,7 +72,16 @@ export default function InventoryScreen() {
              </TouchableOpacity>
            ))}
         </View>
-        <TextInput style={styles.input} placeholder="Quantity (Liters)" keyboardType="numeric" value={refill.qty} onChangeText={t => setRefill({...refill, qty:t})} />
+        
+        <TextInput 
+          style={styles.input} 
+          placeholder="Quantity (Liters)" 
+          placeholderTextColor="#999" // ✅ FIX ADDED
+          keyboardType="numeric" 
+          value={refill.qty} 
+          onChangeText={t => setRefill({...refill, qty:t})} 
+        />
+        
         <TouchableOpacity style={styles.addBtn} onPress={addFuel}>
           <Text style={{color:'white', fontWeight:'bold'}}>Add Stock</Text>
         </TouchableOpacity>
@@ -90,7 +99,16 @@ export default function InventoryScreen() {
                </TouchableOpacity>
              ))}
           </View>
-          <TextInput style={styles.input} placeholder="New Cost Price (₹/L)" keyboardType="numeric" value={priceUpdate.price} onChangeText={t => setPriceUpdate({...priceUpdate, price:t})} />
+          
+          <TextInput 
+            style={styles.input} 
+            placeholder="New Cost Price (₹/L)" 
+            placeholderTextColor="#999" // ✅ FIX ADDED
+            keyboardType="numeric" 
+            value={priceUpdate.price} 
+            onChangeText={t => setPriceUpdate({...priceUpdate, price:t})} 
+          />
+          
           <TouchableOpacity style={[styles.addBtn, {backgroundColor:'#673ab7'}]} onPress={updateCostPrice}>
             <Text style={{color:'white', fontWeight:'bold'}}>Update Cost</Text>
           </TouchableOpacity>

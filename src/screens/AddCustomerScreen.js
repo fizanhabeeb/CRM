@@ -65,7 +65,8 @@ export default function AddCustomerScreen({ navigation }) {
         <Text style={styles.label}>Customer Name *</Text>
         <TextInput 
           style={styles.input} 
-          placeholder="Enter Customer Name"  // ✅ Updated
+          placeholder="Enter Customer Name" 
+          placeholderTextColor="#999" // ✅ FIX ADDED
           value={name} 
           onChangeText={setName} 
         />
@@ -74,6 +75,7 @@ export default function AddCustomerScreen({ navigation }) {
         <TextInput 
           style={styles.input} 
           placeholder="Enter 10-digit Mobile No" 
+          placeholderTextColor="#999" // ✅ FIX ADDED
           value={phone} 
           onChangeText={setPhone} 
           keyboardType="phone-pad"
@@ -83,7 +85,8 @@ export default function AddCustomerScreen({ navigation }) {
         <Text style={styles.label}>Address</Text>
         <TextInput 
           style={styles.input} 
-          placeholder="Enter Address (City/Area)" // ✅ Updated
+          placeholder="Enter Address (City/Area)" 
+          placeholderTextColor="#999" // ✅ FIX ADDED
           value={address} 
           onChangeText={setAddress} 
         />
@@ -99,6 +102,7 @@ export default function AddCustomerScreen({ navigation }) {
             <TextInput 
               style={styles.input} 
               placeholder="e.g. 5000" 
+              placeholderTextColor="#999" // ✅ FIX ADDED
               value={creditLimit} 
               onChangeText={setCreditLimit} 
               keyboardType="numeric"
