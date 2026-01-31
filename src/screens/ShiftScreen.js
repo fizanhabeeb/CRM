@@ -10,8 +10,6 @@ export default function ShiftScreen({ navigation }) {
   
   // Form State
   const [cashInput, setCashInput] = useState('');
-  const [meterInput, setMeterInput] = useState(''); // Start/End Meter
-  const [testingInput, setTestingInput] = useState('0'); // Calibration Qty
   const [notesInput, setNotesInput] = useState(''); // Shift Notes
   
   const [shiftStats, setShiftStats] = useState({ totalSales: 0, cashCollected: 0, creditSales: 0, totalLiters: 0 });
@@ -50,35 +48,36 @@ export default function ShiftScreen({ navigation }) {
   };
 
   const handleOpenShift = async () => {
-    if(!cashInput || !meterInput) return Alert.alert("Error", "Enter Opening Cash & Meter Reading");
+    if(!cashInput) return Alert.alert("Error", "Enter Opening Cash Amount");
     
     const startTime = new Date().toLocaleString();
+    // Passing 0 for start_meter since feature is removed
     await db.runAsync(
-        'INSERT INTO shifts (user_id, start_time, opening_cash, start_meter, status) VALUES (?, ?, ?, ?, "OPEN")',
-        [user.id, startTime, parseFloat(cashInput), parseFloat(meterInput)]
+        'INSERT INTO shifts (user_id, start_time, opening_cash, start_meter, status) VALUES (?, ?, ?, 0, "OPEN")',
+        [user.id, startTime, parseFloat(cashInput)]
     );
-    await logAudit(user.username, 'SHIFT_OPEN', `Started. Cash: ${cashInput}, Meter: ${meterInput}`);
+    await logAudit(user.username, 'SHIFT_OPEN', `Started. Cash: ${cashInput}`);
     
-    setCashInput(''); setMeterInput('');
+    setCashInput('');
     checkShift();
     Alert.alert("Success", "Shift Opened!");
   };
 
   const handleCloseShift = async () => {
-    if(!cashInput || !meterInput) return Alert.alert("Error", "Enter Closing Cash & Meter Reading");
+    if(!cashInput) return Alert.alert("Error", "Enter Closing Cash Amount");
     
     const endTime = new Date().toLocaleString();
     const actualCash = parseFloat(cashInput);
-    const endMeter = parseFloat(meterInput);
-    const testingVol = parseFloat(testingInput) || 0;
+    
+    // Meter & Testing logic removed, setting defaults to 0
+    const endMeter = 0;
+    const testingVol = 0;
     
     const expectedCash = activeShift.opening_cash + shiftStats.cashCollected;
     const cashDiff = actualCash - expectedCash;
     
-    // 🧮 METER RECONCILIATION LOGIC
-    const physicalSales = (endMeter - activeShift.start_meter) - testingVol;
+    // 🧮 LOGIC UPDATED: Only Cash & App Sales (No Physical Meter Check)
     const appSales = shiftStats.totalLiters;
-    const variance = physicalSales - appSales; // Positive means Fuel Missing (Theft?), Negative means App Error
     
     await db.runAsync(
         `UPDATE shifts SET 
@@ -88,17 +87,11 @@ export default function ShiftScreen({ navigation }) {
         [endTime, actualCash, expectedCash, actualCash, endMeter, testingVol, notesInput, activeShift.id]
     );
 
-    let msg = `Shift Closed Report\n\n💰 CASH:\nExpected: ₹${expectedCash}\nActual: ₹${actualCash}\nDiff: ₹${cashDiff}\n\n⛽ FUEL STOCK:\nPhysical Sale: ${physicalSales.toFixed(2)}L\nApp Logged: ${appSales.toFixed(2)}L\n`;
+    let msg = `Shift Closed Report\n\n💰 CASH:\nExpected: ₹${expectedCash}\nActual: ₹${actualCash}\nDiff: ₹${cashDiff}\n\n⛽ SALES (App Log):\nTotal Volume: ${appSales.toFixed(2)}L\n`;
     
-    if (Math.abs(variance) > 1) {
-        msg += `\n🚨 VARIANCE DETECTED: ${variance.toFixed(2)}L\n(Check for theft or missed entries)`;
-    } else {
-        msg += `\n✅ Meter Matches App!`;
-    }
-
-    await logAudit(user.username, 'SHIFT_CLOSE', `Closed. Cash Diff: ${cashDiff}, Fuel Var: ${variance.toFixed(2)}L`);
+    await logAudit(user.username, 'SHIFT_CLOSE', `Closed. Cash Diff: ${cashDiff}`);
     
-    setCashInput(''); setMeterInput(''); setTestingInput('0'); setNotesInput('');
+    setCashInput(''); setNotesInput('');
     setActiveShift(null);
     Alert.alert("Shift Report", msg, [{ text: "OK", onPress: () => navigation.navigate('Dashboard') }]);
   };
@@ -109,22 +102,15 @@ export default function ShiftScreen({ navigation }) {
         <View style={styles.card}>
           <Ionicons name="sunny" size={50} color="#ff9800" style={{alignSelf:'center', marginBottom:20}} />
           <Text style={styles.title}>Start Your Shift</Text>
-          <Text style={styles.subtitle}>Count cash & Check pump meter.</Text>
+          <Text style={styles.subtitle}>Enter your opening cash to begin.</Text>
           
           <TextInput 
             style={styles.input} 
-            placeholder="Opening Cash Amount (₹)" 
+            placeholder="Opening Cash Amount (₹)"
+            placeholderTextColor="#888" 
             keyboardType="numeric"
             value={cashInput}
             onChangeText={setCashInput}
-          />
-
-          <TextInput 
-            style={styles.input} 
-            placeholder="Start Meter Reading (e.g. 100500)" 
-            keyboardType="numeric"
-            value={meterInput}
-            onChangeText={setMeterInput}
           />
           
           <TouchableOpacity style={styles.btn} onPress={handleOpenShift}>
@@ -146,10 +132,6 @@ export default function ShiftScreen({ navigation }) {
           <View style={styles.row}>
              <Text style={styles.label}>Opening Cash:</Text>
              <Text>₹{activeShift.opening_cash}</Text>
-          </View>
-          <View style={styles.row}>
-             <Text style={styles.label}>Start Meter:</Text>
-             <Text>{activeShift.start_meter}</Text>
           </View>
        </View>
 
@@ -181,40 +163,23 @@ export default function ShiftScreen({ navigation }) {
           <TextInput 
             style={styles.input} 
             placeholder="0.00" 
+            placeholderTextColor="#888"
             keyboardType="numeric"
             value={cashInput}
             onChangeText={setCashInput}
-          />
-
-          <Text style={styles.inputLabel}>End Meter Reading</Text>
-          <TextInput 
-            style={styles.input} 
-            placeholder="e.g. 101000" 
-            keyboardType="numeric"
-            value={meterInput}
-            onChangeText={setMeterInput}
-          />
-
-          <Text style={styles.inputLabel}>Testing/Calibration Volume (L)</Text>
-          <Text style={{fontSize:10, color:'#666', marginBottom:5}}>Fuel removed for testing (not sold).</Text>
-          <TextInput 
-            style={styles.input} 
-            placeholder="0" 
-            keyboardType="numeric"
-            value={testingInput}
-            onChangeText={setTestingInput}
           />
 
           <Text style={styles.inputLabel}>Shift Notes (Optional)</Text>
           <TextInput 
             style={styles.input} 
             placeholder="Any issues? (e.g. Printer stuck)" 
+            placeholderTextColor="#888"
             value={notesInput}
             onChangeText={setNotesInput}
           />
 
           <TouchableOpacity style={[styles.btn, {backgroundColor:'#f44336'}]} onPress={handleCloseShift}>
-             <Text style={styles.btnText}>Close Shift & Reconcile</Text>
+             <Text style={styles.btnText}>Close Shift</Text>
           </TouchableOpacity>
        </View>
     </ScrollView>
@@ -226,7 +191,15 @@ const styles = StyleSheet.create({
   card: { backgroundColor: 'white', padding: 20, borderRadius: 10, elevation: 3, marginBottom: 20 },
   title: { fontSize: 20, fontWeight: 'bold', marginBottom: 15, textAlign:'center' },
   subtitle: { color: '#666', textAlign:'center', marginBottom: 20 },
-  input: { borderWidth: 1, borderColor: '#ddd', padding: 12, borderRadius: 8, fontSize: 16, marginBottom: 15 },
+  input: { 
+    borderWidth: 1, 
+    borderColor: '#ddd', 
+    padding: 12, 
+    borderRadius: 8, 
+    fontSize: 16, 
+    marginBottom: 15,
+    color: '#000' 
+  },
   inputLabel: { fontWeight:'bold', marginBottom: 5, color:'#333' },
   btn: { backgroundColor: '#4caf50', padding: 15, borderRadius: 8, alignItems: 'center', marginTop:10 },
   btnText: { color: 'white', fontWeight: 'bold', fontSize: 16 },

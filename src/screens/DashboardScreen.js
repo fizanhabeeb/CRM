@@ -1,10 +1,11 @@
 import React, { useState, useContext } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, Alert, Modal, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, TextInput } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context'; // 1. Updated Import
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { db } from '../database/db';
 import { AuthContext } from '../context/AuthContext'; 
-import * as FileSystem from 'expo-file-system'; 
+import * as FileSystem from 'expo-file-system/legacy'; // 2. Updated to Legacy to silence warning
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';

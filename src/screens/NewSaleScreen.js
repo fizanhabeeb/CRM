@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, FlatList, StyleSheet, Switch } from 'react-native';
-import { db, logAudit } from '../database/db'; 
+import { db, logAudit } from '../database/db';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthContext } from '../context/AuthContext'; 
-import * as Linking from 'expo-linking';
 
 export default function NewSaleScreen({ navigation }) {
   const { user, isDarkMode } = useContext(AuthContext); // 🌑 Dark Mode
@@ -65,7 +64,12 @@ export default function NewSaleScreen({ navigation }) {
   };
 
   const calculateTotal = () => {
-    const baseAmount = parseFloat(txn.qty || 0) * parseFloat(txn.price || 0);
+    const qty = parseFloat(txn.qty);
+    const price = parseFloat(txn.price);
+    
+    // Safety check for calculation
+    const baseAmount = (isNaN(qty) ? 0 : qty) * (isNaN(price) ? 0 : price);
+    
     let discount = parseFloat(txn.discountVal || 0); 
     let pointsDiscount = 0;
     if (txn.redeemPoints && customer.loyalty_points > 0) {
@@ -98,9 +102,15 @@ export default function NewSaleScreen({ navigation }) {
   const generateBill = async () => {
     if (!txn.vehicleNo) return Alert.alert("Error", "Enter Vehicle No");
     
+    // VALIDATION: Ensure Quantity is a number greater than 0
+    const qty = parseFloat(txn.qty);
+    if (!qty || isNaN(qty) || qty <= 0) {
+        return Alert.alert("Error", "Please enter a valid quantity greater than 0.");
+    }
+
     // Profit Check
     const totalDiscount = parseFloat(txn.discountVal) + (txn.redeemPoints ? Math.floor(customer.loyalty_points/10) : 0);
-    const totalMargin = marginInfo.margin * parseFloat(txn.qty);
+    const totalMargin = marginInfo.margin * qty;
     if (totalDiscount > totalMargin) return Alert.alert("🛑 Profit Warning", `Discount (₹${totalDiscount}) exceeds profit (₹${totalMargin.toFixed(0)}).`);
 
     // Fraud Check
@@ -116,39 +126,49 @@ export default function NewSaleScreen({ navigation }) {
   };
 
   const processTransaction = async (isSuspicious) => {
-    const { final, pointsDisc } = calculateTotal();
-    const invoiceNo = "INV-" + Math.floor(Math.random() * 100000);
-    const now = new Date();
-    const pointsEarned = Math.floor(parseFloat(txn.qty));
+    try {
+        const { final, pointsDisc } = calculateTotal();
+        const invoiceNo = "INV-" + Math.floor(Math.random() * 100000);
+        const now = new Date();
+        const saleQty = parseFloat(txn.qty); // Parse once, use everywhere
+        const pointsEarned = Math.floor(saleQty);
+        
+        // Shift ID
+        const shiftRes = await db.getAllAsync('SELECT id FROM shifts WHERE user_id = ? AND status = "OPEN"', [user.id]);
+        const shiftId = shiftRes.length > 0 ? shiftRes[0].id : null;
+
+        await db.runAsync(`
+        INSERT INTO transactions 
+        (invoice_no, customer_id, vehicle_no, fuel_type, quantity, price_per_liter, total_amount, discount_amount, payment_mode, points_earned, points_redeemed, date, time, operator_name, rating, feedback_note, buy_price, shift_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [invoiceNo, customer.id, txn.vehicleNo, txn.fuelType, saleQty, txn.price, final, (txn.discountVal + pointsDisc), txn.payMode, pointsEarned, (txn.redeemPoints ? customer.loyalty_points : 0), now.toISOString().split('T')[0], now.toLocaleTimeString(), user.username, txn.rating, txn.feedback, marginInfo.buyPrice, shiftId]
+        );
+
+        // Update Balance
+        // NOTE: Only add to debt if it's a Credit Sale or the Customer is strictly a Credit Customer
+        if(txn.payMode === 'Credit' || customer.type === 'Credit') {
+            const table = customer.company_id ? 'companies' : 'customers';
+            const id = customer.company_id || customer.id;
+            await db.runAsync(`UPDATE ${table} SET current_balance = current_balance + ? WHERE id = ?`, [final, id]);
+        }
+        
+        // Points Update
+        let newPoints = txn.redeemPoints ? pointsEarned : customer.loyalty_points + pointsEarned;
+        await db.runAsync('UPDATE customers SET loyalty_points = ? WHERE id = ?', [newPoints, customer.id]);
+        
+        // ⛽ STOCK UPDATE
+        await db.runAsync('UPDATE tanks SET current_level = current_level - ? WHERE fuel_type = ?', [saleQty, txn.fuelType]);
+
+        // Audit Log
+        const action = isSuspicious ? 'SUSPICIOUS_SALE' : 'NEW_SALE';
+        await logAudit(user.username, action, `Inv: ${invoiceNo}, Amt: ${final}, Mode: ${txn.payMode}`);
+
+        Alert.alert("✅ Bill Generated", `Invoice: ${invoiceNo}\nPaid via: ${txn.payMode}`, [{ text: "Done", onPress: () => navigation.navigate('Dashboard') }]);
     
-    // Shift ID
-    const shiftRes = await db.getAllAsync('SELECT id FROM shifts WHERE user_id = ? AND status = "OPEN"', [user.id]);
-    const shiftId = shiftRes.length > 0 ? shiftRes[0].id : null;
-
-    await db.runAsync(`
-      INSERT INTO transactions 
-      (invoice_no, customer_id, vehicle_no, fuel_type, quantity, price_per_liter, total_amount, discount_amount, payment_mode, points_earned, points_redeemed, date, time, operator_name, rating, feedback_note, buy_price, shift_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [invoiceNo, customer.id, txn.vehicleNo, txn.fuelType, txn.qty, txn.price, final, (txn.discountVal + pointsDisc), txn.payMode, pointsEarned, (txn.redeemPoints ? customer.loyalty_points : 0), now.toISOString().split('T')[0], now.toLocaleTimeString(), user.username, txn.rating, txn.feedback, marginInfo.buyPrice, shiftId]
-    );
-
-    // Update Balance
-    if(txn.payMode === 'Credit' || customer.type === 'Credit') {
-        const table = customer.company_id ? 'companies' : 'customers';
-        const id = customer.company_id || customer.id;
-        await db.runAsync(`UPDATE ${table} SET current_balance = current_balance + ? WHERE id = ?`, [final, id]);
+    } catch (error) {
+        console.error("Sale Error: ", error);
+        Alert.alert("Transaction Failed", "Could not save sale or update stock. Please try again.");
     }
-    
-    // Points & Stock
-    let newPoints = txn.redeemPoints ? pointsEarned : customer.loyalty_points + pointsEarned;
-    await db.runAsync('UPDATE customers SET loyalty_points = ? WHERE id = ?', [newPoints, customer.id]);
-    await db.runAsync('UPDATE tanks SET current_level = current_level - ? WHERE fuel_type = ?', [parseFloat(txn.qty), txn.fuelType]);
-
-    // Audit Log
-    const action = isSuspicious ? 'SUSPICIOUS_SALE' : 'NEW_SALE';
-    await logAudit(user.username, action, `Inv: ${invoiceNo}, Amt: ${final}`);
-
-    Alert.alert("✅ Bill Generated", `Invoice: ${invoiceNo}`, [{ text: "Done", onPress: () => navigation.navigate('Dashboard') }]);
   };
 
   if(step === 1) {
@@ -216,7 +236,7 @@ export default function NewSaleScreen({ navigation }) {
         </View>
       </View>
 
-      {/* ✅ RESTORED DISCOUNTS & OFFERS SECTION */}
+      {/* ✅ DISCOUNTS & OFFERS SECTION */}
       <View style={[styles.section, { borderColor: theme.border }]}>
         <Text style={[styles.label, { color: theme.text }]}>Discounts & Offers</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginBottom:10}}>
@@ -232,6 +252,20 @@ export default function NewSaleScreen({ navigation }) {
         <View style={styles.rowBetween}>
           <Text style={{color: theme.text}}>Redeem {customer.loyalty_points} Points? (-₹{Math.floor(customer.loyalty_points/10)})</Text>
           <Switch value={txn.redeemPoints} onValueChange={v => setTxn({...txn, redeemPoints:v})} disabled={customer.loyalty_points < 10} />
+        </View>
+      </View>
+
+      {/* 🆕 NEW: PAYMENT MODE SECTION */}
+      <View style={[styles.section, { borderColor: theme.border }]}>
+        <Text style={[styles.label, { color: theme.text }]}>Payment Method</Text>
+        <View style={{flexDirection:'row', flexWrap:'wrap'}}>
+           {['Cash', 'Card', 'UPI', 'Credit'].map(mode => (
+              <TouchableOpacity key={mode} 
+                style={[styles.chip, { borderColor: theme.border, marginBottom: 5 }, txn.payMode === mode && styles.chipActive]}
+                onPress={() => setTxn({...txn, payMode: mode})}>
+                 <Text style={{color: txn.payMode === mode ? 'white' : theme.text}}>{mode}</Text>
+              </TouchableOpacity>
+           ))}
         </View>
       </View>
 

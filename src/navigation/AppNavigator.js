@@ -18,15 +18,25 @@ import AuditLogScreen from '../screens/AuditLogScreen';
 import QRScannerScreen from '../screens/QRScannerScreen'; 
 import InventoryScreen from '../screens/InventoryScreen'; 
 import SettingsScreen from '../screens/SettingsScreen';
-import ShiftScreen from '../screens/ShiftScreen'; // NEW
-import ExpenseScreen from '../screens/ExpenseScreen'; // NEW
+import ShiftScreen from '../screens/ShiftScreen';
+import ExpenseScreen from '../screens/ExpenseScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
+// 🌑 Helper for Common Header Styles
+const getHeaderOptions = (isDarkMode) => ({
+  headerStyle: { backgroundColor: isDarkMode ? '#1e1e1e' : '#ffffff' },
+  headerTintColor: isDarkMode ? '#ffffff' : '#000000',
+  headerTitleStyle: { fontWeight: 'bold' },
+  cardStyle: { backgroundColor: isDarkMode ? '#121212' : '#f5f5f5' } // Default background for screens
+});
+
 function HomeStack() {
+  const { isDarkMode } = useContext(AuthContext); // 🌑 Get Theme
+
   return (
-    <Stack.Navigator>
+    <Stack.Navigator screenOptions={getHeaderOptions(isDarkMode)}>
       <Stack.Screen name="Dashboard" component={DashboardScreen} options={{headerShown:false}} />
       <Stack.Screen name="NewSale" component={NewSaleScreen} options={{title:'New Fuel Sale'}} />
       <Stack.Screen name="Offers" component={OffersScreen} options={{title:'Manage Offers'}} />
@@ -41,8 +51,10 @@ function HomeStack() {
 }
 
 function CustomerStack() {
+  const { isDarkMode } = useContext(AuthContext); // 🌑 Get Theme
+
   return (
-    <Stack.Navigator>
+    <Stack.Navigator screenOptions={getHeaderOptions(isDarkMode)}>
       <Stack.Screen name="CustomerList" component={CustomersScreen} options={{headerShown:false}} />
       <Stack.Screen name="AddCustomer" component={AddCustomerScreen} options={{title:'New Customer'}} />
       <Stack.Screen name="CustomerDetail" component={CustomerDetailScreen} options={{title:'Customer Profile'}} />
@@ -51,9 +63,31 @@ function CustomerStack() {
 }
 
 function MainTabs() {
+  const { isDarkMode } = useContext(AuthContext); // 🌑 Get Theme
+
+  // Colors for Dark Mode
+  const theme = {
+    barBg: isDarkMode ? '#1e1e1e' : '#ffffff',
+    text: isDarkMode ? '#ffffff' : '#000000',
+    border: isDarkMode ? '#333333' : '#dddddd',
+    inactive: isDarkMode ? '#888888' : 'gray',
+  };
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
+        // 1. Fix Bottom Tab Bar Colors
+        tabBarStyle: { 
+          backgroundColor: theme.barBg, 
+          borderTopColor: theme.border 
+        },
+        tabBarActiveTintColor: '#2196f3',
+        tabBarInactiveTintColor: theme.inactive,
+        
+        // 2. Fix Top Header Colors (Home, Customers, Reports)
+        headerStyle: { backgroundColor: theme.barBg },
+        headerTintColor: theme.text,
+
         tabBarIcon: ({ focused, color, size }) => {
           let iconName = 'ellipse';
           if (route.name === 'Home') iconName = focused ? 'home' : 'home-outline';
@@ -63,8 +97,9 @@ function MainTabs() {
         },
       })}
     >
-      <Tab.Screen name="Home" component={HomeStack} />
-      <Tab.Screen name="Customers" component={CustomerStack} />
+      {/* Note: 'headerShown: false' on Home usually looks better if Dashboard has its own header */}
+      <Tab.Screen name="Home" component={HomeStack} options={{headerShown: false}} />
+      <Tab.Screen name="Customers" component={CustomerStack} options={{headerShown: false}} />
       <Tab.Screen name="Reports" component={ReportsScreen} options={{title:'Analytics & Reports'}} />
     </Tab.Navigator>
   );
