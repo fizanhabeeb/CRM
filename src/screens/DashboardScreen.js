@@ -1,11 +1,10 @@
 import React, { useState, useContext } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, TextInput } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context'; // 1. Updated Import
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, Alert, Modal, TextInput } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { db } from '../database/db';
 import { AuthContext } from '../context/AuthContext'; 
-import * as FileSystem from 'expo-file-system/legacy'; // 2. Updated to Legacy to silence warning
+import * as FileSystem from 'expo-file-system'; 
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -13,7 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export default function DashboardScreen({ navigation }) {
   const { user, logout, isDarkMode } = useContext(AuthContext);
   const [stats, setStats] = useState({ totalSales: 0, creditOutstanding: 0, totalTxns: 0 });
-  const [prediction, setPrediction] = useState(0);
+  // Removed prediction state
   const [alerts, setAlerts] = useState([]);
   const [activeShift, setActiveShift] = useState(null);
   
@@ -42,10 +41,7 @@ export default function DashboardScreen({ navigation }) {
         creditOutstanding: creditRes[0]?.outstanding || 0
       });
 
-      const demandRes = await db.getAllAsync('SELECT SUM(quantity) as total_qty, COUNT(DISTINCT date) as days FROM transactions');
-      if (demandRes[0].days > 0) {
-        setPrediction(demandRes[0].total_qty / demandRes[0].days);
-      }
+      // Removed Demand Prediction Calculation logic
 
       const shiftRes = await db.getAllAsync('SELECT * FROM shifts WHERE user_id = ? AND status = "OPEN"', [user.id]);
       if(shiftRes.length > 0) setActiveShift(shiftRes[0]);
@@ -161,15 +157,7 @@ export default function DashboardScreen({ navigation }) {
          </View>
       </TouchableOpacity>
       
-      <View style={styles.predictionCard}>
-        <View style={{flexDirection:'row', justifyContent:'space-between'}}>
-           <Text style={{color:'white', fontWeight:'bold'}}>🤖 AI Demand Prediction</Text>
-           <Ionicons name="trending-up" color="white" size={20} />
-        </View>
-        <Text style={{color:'white', fontSize:28, fontWeight:'bold', marginTop:5}}>
-           {prediction.toFixed(1)} Liters
-        </Text>
-      </View>
+      {/* Removed Prediction Card View */}
 
       <View style={styles.cardContainer}>
         <View style={[styles.card, { backgroundColor: isDarkMode ? '#1a237e' : '#e3f2fd' }]}>
@@ -273,7 +261,6 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 20, fontWeight: 'bold' },
   headerSubtitle: { marginTop: 2 },
   shiftBanner: { flexDirection: 'row', alignItems: 'center', padding: 15, marginHorizontal: 15, marginTop: 15, borderRadius: 10, elevation: 2 },
-  predictionCard: { margin: 15, padding: 15, backgroundColor: '#673ab7', borderRadius: 10, elevation: 3 },
   cardContainer: { flexDirection: 'row', padding: 10 },
   card: { flex: 1, padding: 15, borderRadius: 10, margin: 5, elevation: 1 },
   cardLabel: { fontSize: 12 },

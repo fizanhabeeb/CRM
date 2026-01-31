@@ -2,15 +2,15 @@ import React, { useState, useCallback, useContext } from 'react';
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, ScrollView, RefreshControl, Dimensions, Alert } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { db } from '../database/db';
-import { AuthContext } from '../context/AuthContext';
+import { db } from '../database/db'; 
+import { AuthContext } from '../context/AuthContext'; 
 import { LineChart, PieChart } from 'react-native-gifted-charts';
 import * as Linking from 'expo-linking';
 
 const screenWidth = Dimensions.get('window').width;
 
 export default function ReportsScreen() {
-  const { user, isDarkMode } = useContext(AuthContext); // 🌑 Dark Mode
+  const { user, theme, isDarkMode } = useContext(AuthContext); 
   const [activeTab, setActiveTab] = useState('Sales'); 
   const [loading, setLoading] = useState(false);
   
@@ -22,24 +22,14 @@ export default function ReportsScreen() {
   const [trendData, setTrendData] = useState([]);
   const [fuelPieData, setFuelPieData] = useState([]);
 
-  // 🌑 Dark Mode Styles
-  const theme = {
-    bg: isDarkMode ? '#121212' : '#f5f5f5',
-    card: isDarkMode ? '#1e1e1e' : '#fff',
-    text: isDarkMode ? '#fff' : '#000',
-    subText: isDarkMode ? '#aaa' : '#666',
-    border: isDarkMode ? '#333' : '#ddd',
-    tabBar: isDarkMode ? '#1e1e1e' : '#fff',
-    listBorder: isDarkMode ? '#333' : '#eee'
-  };
-
+  // Load Data Function
   const loadData = async () => {
+    if (!user) return; // Extra safety inside function
     setLoading(true);
     const today = new Date().toISOString().split('T')[0];
     const currentMonth = today.substring(0, 7); 
 
     try {
-      // 1. Sales & Profit & Expenses
       const dailyRes = await db.getAllAsync('SELECT SUM(total_amount) as total, SUM((price_per_liter - buy_price) * quantity) as gross FROM transactions WHERE date = ?', [today]);
       const monthRes = await db.getAllAsync('SELECT SUM(total_amount) as total FROM transactions WHERE date LIKE ?', [`${currentMonth}%`]);
       const expRes = await db.getAllAsync('SELECT SUM(amount) as total FROM expenses WHERE date = ?', [today]);
@@ -55,18 +45,19 @@ export default function ReportsScreen() {
         netProfit: gross - expenses
       });
 
-      // 2. Load History
       const txns = await db.getAllAsync('SELECT t.*, c.name as customer_name FROM transactions t JOIN customers c ON t.customer_id = c.id ORDER BY t.id DESC LIMIT 50');
       setTransactions(txns);
 
-      // 3. Chart Data
-      const last7Days = [];
+      const chartPromises = [];
       for(let i=6; i>=0; i--) {
          const d = new Date(); d.setDate(d.getDate() - i);
          const dateStr = d.toISOString().split('T')[0];
-         const res = await db.getAllAsync('SELECT SUM(total_amount) as total FROM transactions WHERE date = ?', [dateStr]);
-         last7Days.push({ value: res[0]?.total || 0, label: dateStr.substring(5) });
+         chartPromises.push(
+            db.getAllAsync('SELECT SUM(total_amount) as total FROM transactions WHERE date = ?', [dateStr])
+            .then(res => ({ value: res[0]?.total || 0, label: dateStr.substring(5) }))
+         );
       }
+      const last7Days = await Promise.all(chartPromises);
       setTrendData(last7Days);
 
       const pRes = await db.getAllAsync('SELECT SUM(quantity) as qty FROM transactions WHERE fuel_type = "Petrol" AND date = ?', [today]);
@@ -83,7 +74,6 @@ export default function ReportsScreen() {
         setFuelPieData([]);
       }
 
-      // 4. Customer Lists
       const custRes = await db.getAllAsync(`
         SELECT c.name, c.current_balance, c.credit_limit, SUM(t.total_amount) as total_spent, COUNT(t.id) as visits 
         FROM transactions t JOIN customers c ON t.customer_id = c.id 
@@ -97,9 +87,9 @@ export default function ReportsScreen() {
     } catch (e) { console.log(e); } finally { setLoading(false); }
   };
 
-  useFocusEffect(useCallback(() => { loadData(); }, []));
+  // ✅ HOOK CALLED UNCONDITIONALLY (Fixes the crash)
+  useFocusEffect(useCallback(() => { if(user) loadData(); }, [user]));
 
-  // 🗑️ DELETE TRANSACTION
   const deleteTransaction = (txn) => {
     Alert.alert("Delete Sale?", `Delete Inv: ${txn.invoice_no} (₹${txn.total_amount})?\nThis RESTORES stock & balance.`, [
       { text: "Cancel", style: "cancel" },
@@ -120,6 +110,45 @@ export default function ReportsScreen() {
     ]);
   };
 
+  const clearAllHistory = async () => {
+    Alert.alert(
+      "⚠️ DANGER: Clear All History?",
+      "This will DELETE ALL SALES permanently and RESTORE fuel stock, customer balances, and points.\n\nAre you sure?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "YES, WIPE ALL", style: 'destructive', onPress: async () => {
+          try {
+            setLoading(true);
+            
+            const fuelRes = await db.getAllAsync('SELECT fuel_type, SUM(quantity) as total_qty FROM transactions GROUP BY fuel_type');
+            for (const f of fuelRes) {
+                await db.runAsync('UPDATE tanks SET current_level = current_level + ? WHERE fuel_type = ?', [f.total_qty, f.fuel_type]);
+            }
+
+            const creditRes = await db.getAllAsync('SELECT customer_id, SUM(total_amount) as total_credit FROM transactions WHERE payment_mode = "Credit" GROUP BY customer_id');
+            for (const c of creditRes) {
+                await db.runAsync('UPDATE customers SET current_balance = current_balance - ? WHERE id = ?', [c.total_credit, c.customer_id]);
+            }
+
+            const pointsRes = await db.getAllAsync('SELECT customer_id, SUM(points_earned) as total_points FROM transactions GROUP BY customer_id');
+            for (const p of pointsRes) {
+                await db.runAsync('UPDATE customers SET loyalty_points = loyalty_points - ? WHERE id = ?', [p.total_points, p.customer_id]);
+            }
+
+            await db.runAsync('DELETE FROM transactions');
+            
+            Alert.alert("✅ Reset Complete", "All sales history cleared and stocks/balances restored.");
+            loadData();
+          } catch (e) {
+            console.error(e);
+            Alert.alert("Error", "Failed to clear history: " + e.message);
+            setLoading(false);
+          }
+        }}
+      ]
+    );
+  };
+
   const sendLowBalanceAlert = (phone, balance) => {
     const msg = `⚠️ Alert: Your outstanding fuel balance is ₹${balance}. Please pay soon.`;
     Linking.openURL(`whatsapp://send?text=${encodeURIComponent(msg)}&phone=${phone}`).catch(() => Alert.alert("Error", "WhatsApp not installed"));
@@ -138,7 +167,7 @@ export default function ReportsScreen() {
         </View>
       </View>
 
-      {user.role === 'Admin' && (
+      {user?.role === 'Admin' && (
         <View style={[styles.card, { backgroundColor: theme.card, borderLeftColor: '#673ab7', marginTop: 10, marginBottom: 20 }]}>
            <Text style={[styles.cardTitle, { color: theme.subText }]}>Net Profit (Gross - Exp)</Text>
            <Text style={[styles.cardValue, { color: '#673ab7' }]}>₹ {salesData.netProfit.toFixed(0)}</Text>
@@ -176,27 +205,44 @@ export default function ReportsScreen() {
   );
 
   const renderHistory = () => (
-    <FlatList
-      data={transactions}
-      keyExtractor={item => item.id.toString()}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} />}
-      renderItem={({ item }) => (
-        <View style={[styles.listItem, { backgroundColor: theme.card }]}>
-          <View style={{flex:1}}>
-            <Text style={[styles.listTitle, { color: theme.text }]}>#{item.invoice_no} • {item.customer_name}</Text>
-            <Text style={[styles.listSub, { color: theme.subText }]}>{item.fuel_type} {item.quantity}L @ ₹{item.price_per_liter}</Text>
-            <Text style={{fontSize:10, color: theme.subText}}>{item.date} {item.time} ({item.payment_mode})</Text>
-          </View>
-          <View style={{alignItems:'flex-end'}}>
-             <Text style={styles.amount}>₹ {item.total_amount.toFixed(0)}</Text>
-             <TouchableOpacity onPress={() => deleteTransaction(item)} style={{marginTop:5}}>
-               <Ionicons name="trash-outline" size={20} color="#f44336" />
-             </TouchableOpacity>
-          </View>
-        </View>
-      )}
-    />
+    <View style={{flex:1}}>
+        {user?.role === 'Admin' && transactions.length > 0 && (
+            <TouchableOpacity onPress={clearAllHistory} style={[styles.clearBtn, {backgroundColor: '#ffebee', borderColor: '#ef5350'}]}>
+                <Ionicons name="warning-outline" size={18} color="#d32f2f" />
+                <Text style={{color:'#d32f2f', fontWeight:'bold', marginLeft:5}}>CLEAR ALL HISTORY</Text>
+            </TouchableOpacity>
+        )}
+
+        <FlatList
+        data={transactions}
+        keyExtractor={item => item.id.toString()}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} />}
+        renderItem={({ item }) => (
+            <View style={[styles.listItem, { backgroundColor: theme.card }]}>
+            <View style={{flex:1}}>
+                <Text style={[styles.listTitle, { color: theme.text }]}>
+                    {item.vehicle_type ? `[${item.vehicle_type}] ` : ''}#{item.invoice_no} • {item.customer_name}
+                </Text>
+                <Text style={[styles.listSub, { color: theme.subText }]}>{item.fuel_type} {item.quantity}L @ ₹{item.price_per_liter}</Text>
+                <Text style={{fontSize:10, color: theme.subText}}>{item.date} {item.time} ({item.payment_mode})</Text>
+            </View>
+            <View style={{alignItems:'flex-end'}}>
+                <Text style={styles.amount}>₹ {item.total_amount.toFixed(0)}</Text>
+                
+                {user?.role === 'Admin' && (
+                    <TouchableOpacity onPress={() => deleteTransaction(item)} style={{marginTop:5}}>
+                        <Ionicons name="trash-outline" size={20} color="#f44336" />
+                    </TouchableOpacity>
+                )}
+            </View>
+            </View>
+        )}
+        />
+    </View>
   );
+
+  // 🛡️ MOVED SAFETY CHECK HERE (After all hooks)
+  if (!user) return null;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
@@ -261,4 +307,5 @@ const styles = StyleSheet.create({
   listTitle: { fontSize: 16, fontWeight: 'bold' },
   listSub: { fontSize: 12, marginTop: 2 },
   amount: { fontSize: 16, fontWeight: 'bold', color: '#4caf50' },
+  clearBtn: { flexDirection:'row', justifyContent:'center', padding:10, borderRadius:8, marginBottom:10, borderWidth:1 }
 });

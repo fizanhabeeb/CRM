@@ -3,21 +3,12 @@ import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ScrollView,
 import { useFocusEffect } from '@react-navigation/native';
 import { db, logAudit } from '../database/db';
 import { AuthContext } from '../context/AuthContext';
+import { FUEL_TYPES } from '../utils/constants';
 
 export default function InventoryScreen() {
-  const { user, isDarkMode } = useContext(AuthContext);
+  const { user, theme, isDarkMode } = useContext(AuthContext); // 🎨
   const [tanks, setTanks] = useState([]);
   const [tanker, setTanker] = useState({ fuelType: 'Petrol', qty: '', dipBefore: '', dipAfter: '', newPrice: '' });
-
-  // 🌑 Dark Mode Styles
-  const theme = {
-    bg: isDarkMode ? '#121212' : '#f5f5f5',
-    card: isDarkMode ? '#1e1e1e' : '#fff',
-    text: isDarkMode ? '#fff' : '#000',
-    subText: isDarkMode ? '#aaa' : '#666',
-    border: isDarkMode ? '#333' : '#ddd',
-    inputBg: isDarkMode ? '#2c2c2c' : '#fff'
-  };
 
   const loadData = async () => {
     const res = await db.getAllAsync('SELECT * FROM tanks');
@@ -33,14 +24,10 @@ export default function InventoryScreen() {
     const qty = parseFloat(tanker.qty);
     const price = parseFloat(tanker.newPrice);
     
-    // Get Old Price
     const tRes = await db.getAllAsync('SELECT buy_price FROM tanks WHERE fuel_type = ?', [tanker.fuelType]);
     const oldPrice = tRes[0]?.buy_price || 0;
 
-    // Update Tank
     await db.runAsync('UPDATE tanks SET current_level = current_level + ?, buy_price = ? WHERE fuel_type = ?', [qty, price, tanker.fuelType]);
-
-    // Log Tanker
     await db.runAsync(`INSERT INTO tanker_logs (fuel_type, quantity, dip_before, dip_after, old_buy_price, new_buy_price, date) VALUES (?, ?, ?, ?, ?, ?, ?)`, 
         [tanker.fuelType, qty, tanker.dipBefore, tanker.dipAfter, oldPrice, price, new Date().toLocaleString()]);
 
@@ -74,7 +61,7 @@ export default function InventoryScreen() {
         <Text style={[styles.formHeader, { color: theme.text }]}>🚛 Tanker Stock Arrival</Text>
         
         <View style={{flexDirection:'row', marginBottom:15}}>
-           {['Petrol', 'Diesel'].map(t => (
+           {FUEL_TYPES.map(t => (
              <TouchableOpacity key={t} onPress={()=>setTanker({...tanker, fuelType:t})} style={[styles.chip, { borderColor: theme.border }, tanker.fuelType===t && styles.chipActive]}>
                <Text style={tanker.fuelType===t?{color:'white'}:{color: theme.text}}>{t}</Text>
              </TouchableOpacity>
