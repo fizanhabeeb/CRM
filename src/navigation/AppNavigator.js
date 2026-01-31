@@ -18,6 +18,8 @@ import AuditLogScreen from '../screens/AuditLogScreen';
 import QRScannerScreen from '../screens/QRScannerScreen'; 
 import InventoryScreen from '../screens/InventoryScreen'; 
 import SettingsScreen from '../screens/SettingsScreen';
+import ShiftScreen from '../screens/ShiftScreen'; // NEW
+import ExpenseScreen from '../screens/ExpenseScreen'; // NEW
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -32,6 +34,8 @@ function HomeStack() {
       <Stack.Screen name="QRScanner" component={QRScannerScreen} options={{title:'Scan Vehicle QR'}} /> 
       <Stack.Screen name="Inventory" component={InventoryScreen} options={{title:'Fuel Inventory'}} /> 
       <Stack.Screen name="Settings" component={SettingsScreen} options={{title:'System Settings'}} />
+      <Stack.Screen name="Shift" component={ShiftScreen} options={{title:'Shift Management'}} />
+      <Stack.Screen name="Expenses" component={ExpenseScreen} options={{title:'Station Expenses'}} />
     </Stack.Navigator>
   );
 }
@@ -61,7 +65,7 @@ function MainTabs() {
     >
       <Tab.Screen name="Home" component={HomeStack} />
       <Tab.Screen name="Customers" component={CustomerStack} />
-      <Tab.Screen name="Reports" component={ReportsScreen} options={{title:'Invoices'}} />
+      <Tab.Screen name="Reports" component={ReportsScreen} options={{title:'Analytics & Reports'}} />
     </Tab.Navigator>
   );
 }

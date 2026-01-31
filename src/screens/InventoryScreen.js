@@ -3,15 +3,21 @@ import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ScrollView,
 import { useFocusEffect } from '@react-navigation/native';
 import { db, logAudit } from '../database/db';
 import { AuthContext } from '../context/AuthContext';
-import { Ionicons } from '@expo/vector-icons';
 
 export default function InventoryScreen() {
-  const { user } = useContext(AuthContext);
+  const { user, isDarkMode } = useContext(AuthContext);
   const [tanks, setTanks] = useState([]);
-  // Refill State
-  const [refill, setRefill] = useState({ type: 'Petrol', qty: '' });
-  // Price Update State
-  const [priceUpdate, setPriceUpdate] = useState({ type: 'Petrol', price: '' });
+  const [tanker, setTanker] = useState({ fuelType: 'Petrol', qty: '', dipBefore: '', dipAfter: '', newPrice: '' });
+
+  // 🌑 Dark Mode Styles
+  const theme = {
+    bg: isDarkMode ? '#121212' : '#f5f5f5',
+    card: isDarkMode ? '#1e1e1e' : '#fff',
+    text: isDarkMode ? '#fff' : '#000',
+    subText: isDarkMode ? '#aaa' : '#666',
+    border: isDarkMode ? '#333' : '#ddd',
+    inputBg: isDarkMode ? '#2c2c2c' : '#fff'
+  };
 
   const loadData = async () => {
     const res = await db.getAllAsync('SELECT * FROM tanks');
@@ -20,119 +26,92 @@ export default function InventoryScreen() {
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
 
-  const addFuel = async () => {
-    if(!refill.qty) return Alert.alert("Error", "Enter Quantity");
-    await db.runAsync('UPDATE tanks SET current_level = current_level + ? WHERE fuel_type = ?', [refill.qty, refill.type]);
-    await db.runAsync('INSERT INTO tank_logs (fuel_type, liters_added, date) VALUES (?, ?, ?)', [refill.type, refill.qty, new Date().toLocaleString()]);
-    await logAudit(user.username, 'STOCK_REFILL', `Added ${refill.qty}L to ${refill.type}`);
-    Alert.alert("Success", "Stock Updated");
-    setRefill({ ...refill, qty: '' });
-    loadData();
-  };
+  const handleStockArrival = async () => {
+    if(!tanker.qty || !tanker.dipBefore || !tanker.dipAfter || !tanker.newPrice) {
+        return Alert.alert("Error", "Fill all fields");
+    }
+    const qty = parseFloat(tanker.qty);
+    const price = parseFloat(tanker.newPrice);
+    
+    // Get Old Price
+    const tRes = await db.getAllAsync('SELECT buy_price FROM tanks WHERE fuel_type = ?', [tanker.fuelType]);
+    const oldPrice = tRes[0]?.buy_price || 0;
 
-  const updateCostPrice = async () => {
-    if(!priceUpdate.price) return Alert.alert("Error", "Enter Price");
-    await db.runAsync('UPDATE tanks SET buy_price = ? WHERE fuel_type = ?', [priceUpdate.price, priceUpdate.type]);
-    await logAudit(user.username, 'PRICE_UPDATE', `Updated ${priceUpdate.type} Buy Price to ₹${priceUpdate.price}`);
-    Alert.alert("Success", "Cost Price Updated");
-    setPriceUpdate({ ...priceUpdate, price: '' });
+    // Update Tank
+    await db.runAsync('UPDATE tanks SET current_level = current_level + ?, buy_price = ? WHERE fuel_type = ?', [qty, price, tanker.fuelType]);
+
+    // Log Tanker
+    await db.runAsync(`INSERT INTO tanker_logs (fuel_type, quantity, dip_before, dip_after, old_buy_price, new_buy_price, date) VALUES (?, ?, ?, ?, ?, ?, ?)`, 
+        [tanker.fuelType, qty, tanker.dipBefore, tanker.dipAfter, oldPrice, price, new Date().toLocaleString()]);
+
+    await logAudit(user.username, 'TANKER_UNLOAD', `Added ${qty}L ${tanker.fuelType} @ ₹${price}`);
+    Alert.alert("✅ Success", "Stock & Price Updated!");
+    setTanker({ fuelType: 'Petrol', qty: '', dipBefore: '', dipAfter: '', newPrice: '' });
     loadData();
   };
 
   return (
-    <ScrollView style={styles.container} refreshControl={<RefreshControl onRefresh={loadData} refreshing={false} />}>
-      <Text style={styles.header}>Underground Tank Status</Text>
+    <ScrollView style={[styles.container, { backgroundColor: theme.bg }]} refreshControl={<RefreshControl onRefresh={loadData} refreshing={false} />}>
+      <Text style={[styles.header, { color: theme.text }]}>Underground Tank Status</Text>
 
-      {/* TANK VISUALIZATION */}
       <View style={styles.tankContainer}>
         {tanks.map(tank => {
-          const percent = (tank.current_level / tank.capacity) * 100;
-          const isLow = tank.current_level < tank.low_alert_level;
+          const percent = Math.min((tank.current_level / tank.capacity) * 100, 100);
           return (
-            <View key={tank.fuel_type} style={styles.tankCard}>
-              <Text style={styles.tankTitle}>{tank.fuel_type}</Text>
-              <View style={styles.gauge}>
+            <View key={tank.fuel_type} style={[styles.tankCard, { backgroundColor: theme.card }]}>
+              <Text style={[styles.tankTitle, { color: theme.text }]}>{tank.fuel_type}</Text>
+              <View style={[styles.gauge, { borderColor: theme.border, backgroundColor: isDarkMode ? '#333' : '#f0f0f0' }]}>
                 <View style={[styles.fill, { height: `${percent}%`, backgroundColor: tank.fuel_type === 'Petrol' ? '#ff9800' : '#607d8b' }]} />
               </View>
-              <Text style={styles.levelText}>{tank.current_level.toFixed(0)} L</Text>
-              <Text style={{fontSize:10, color:'#666'}}>Cost: ₹{tank.buy_price || 0}/L</Text>
-              {isLow && <Text style={styles.alertText}>⚠️ LOW STOCK</Text>}
+              <Text style={[styles.levelText, { color: theme.text }]}>{tank.current_level.toFixed(0)} L</Text>
+              <Text style={{fontSize:10, color: theme.subText}}>Buy: ₹{tank.buy_price || 0}/L</Text>
             </View>
           );
         })}
       </View>
 
-      {/* REFILL FORM */}
-      <View style={styles.form}>
-        <Text style={styles.formHeader}>🚛 Log Tanker Refill</Text>
-        <View style={{flexDirection:'row', marginBottom:10}}>
+      <View style={[styles.form, { backgroundColor: theme.card }]}>
+        <Text style={[styles.formHeader, { color: theme.text }]}>🚛 Tanker Stock Arrival</Text>
+        
+        <View style={{flexDirection:'row', marginBottom:15}}>
            {['Petrol', 'Diesel'].map(t => (
-             <TouchableOpacity key={t} onPress={()=>setRefill({...refill, type:t})} style={[styles.chip, refill.type===t && styles.chipActive]}>
-               <Text style={refill.type===t?{color:'white'}:{color:'black'}}>{t}</Text>
+             <TouchableOpacity key={t} onPress={()=>setTanker({...tanker, fuelType:t})} style={[styles.chip, { borderColor: theme.border }, tanker.fuelType===t && styles.chipActive]}>
+               <Text style={tanker.fuelType===t?{color:'white'}:{color: theme.text}}>{t}</Text>
              </TouchableOpacity>
            ))}
         </View>
         
-        <TextInput 
-          style={styles.input} 
-          placeholder="Quantity (Liters)" 
-          placeholderTextColor="#999" // ✅ FIX ADDED
-          keyboardType="numeric" 
-          value={refill.qty} 
-          onChangeText={t => setRefill({...refill, qty:t})} 
-        />
-        
-        <TouchableOpacity style={styles.addBtn} onPress={addFuel}>
-          <Text style={{color:'white', fontWeight:'bold'}}>Add Stock</Text>
+        <View style={styles.row}>
+            <TextInput style={[styles.input, {flex:1, marginRight:5, color: theme.text, borderColor: theme.border, backgroundColor: theme.inputBg }]} placeholderTextColor={theme.subText} placeholder="Invoice Qty (L)" keyboardType="numeric" value={tanker.qty} onChangeText={t=>setTanker({...tanker, qty:t})} />
+            <TextInput style={[styles.input, {flex:1, marginLeft:5, color: theme.text, borderColor: theme.border, backgroundColor: theme.inputBg }]} placeholderTextColor={theme.subText} placeholder="New Buy Price (₹)" keyboardType="numeric" value={tanker.newPrice} onChangeText={t=>setTanker({...tanker, newPrice:t})} />
+        </View>
+        <View style={styles.row}>
+            <TextInput style={[styles.input, {flex:1, marginRight:5, color: theme.text, borderColor: theme.border, backgroundColor: theme.inputBg }]} placeholderTextColor={theme.subText} placeholder="Dip Before" keyboardType="numeric" value={tanker.dipBefore} onChangeText={t=>setTanker({...tanker, dipBefore:t})} />
+            <TextInput style={[styles.input, {flex:1, marginLeft:5, color: theme.text, borderColor: theme.border, backgroundColor: theme.inputBg }]} placeholderTextColor={theme.subText} placeholder="Dip After" keyboardType="numeric" value={tanker.dipAfter} onChangeText={t=>setTanker({...tanker, dipAfter:t})} />
+        </View>
+
+        <TouchableOpacity style={styles.addBtn} onPress={handleStockArrival}>
+          <Text style={{color:'white', fontWeight:'bold'}}>Confirm Arrival</Text>
         </TouchableOpacity>
       </View>
-
-      {/* PROFIT SETTING FORM (Admin Only) */}
-      {user.role === 'Admin' && (
-        <View style={[styles.form, {marginTop: 20}]}>
-          <Text style={styles.formHeader}>💰 Update Buying Price (Cost)</Text>
-          <Text style={{fontSize:10, color:'#666', marginBottom:10}}>Used to calculate daily profit.</Text>
-          <View style={{flexDirection:'row', marginBottom:10}}>
-             {['Petrol', 'Diesel'].map(t => (
-               <TouchableOpacity key={t} onPress={()=>setPriceUpdate({...priceUpdate, type:t})} style={[styles.chip, priceUpdate.type===t && styles.chipActive]}>
-                 <Text style={priceUpdate.type===t?{color:'white'}:{color:'black'}}>{t}</Text>
-               </TouchableOpacity>
-             ))}
-          </View>
-          
-          <TextInput 
-            style={styles.input} 
-            placeholder="New Cost Price (₹/L)" 
-            placeholderTextColor="#999" // ✅ FIX ADDED
-            keyboardType="numeric" 
-            value={priceUpdate.price} 
-            onChangeText={t => setPriceUpdate({...priceUpdate, price:t})} 
-          />
-          
-          <TouchableOpacity style={[styles.addBtn, {backgroundColor:'#673ab7'}]} onPress={updateCostPrice}>
-            <Text style={{color:'white', fontWeight:'bold'}}>Update Cost</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5', padding: 15 },
+  container: { flex: 1, padding: 15 },
   header: { fontSize: 20, fontWeight: 'bold', marginBottom: 20 },
   tankContainer: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 30 },
-  tankCard: { backgroundColor: 'white', padding: 15, borderRadius: 10, alignItems: 'center', width: '45%', elevation:2 },
+  tankCard: { padding: 15, borderRadius: 10, alignItems: 'center', width: '45%', elevation:2 },
   tankTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10 },
-  gauge: { width: 50, height: 120, borderWidth: 2, borderColor: '#ddd', borderRadius: 25, justifyContent: 'flex-end', overflow: 'hidden', backgroundColor:'#f0f0f0' },
+  gauge: { width: 50, height: 120, borderWidth: 2, borderRadius: 25, justifyContent: 'flex-end', overflow: 'hidden' },
   fill: { width: '100%' },
   levelText: { fontSize: 20, fontWeight: 'bold', marginTop: 10 },
-  alertText: { color: 'red', fontWeight: 'bold', marginTop: 5, fontSize:12 },
-  form: { backgroundColor: 'white', padding: 20, borderRadius: 10, elevation: 2 },
-  formHeader: { fontWeight: 'bold', fontSize: 16, marginBottom: 15 },
-  input: { borderWidth: 1, borderColor: '#ddd', padding: 10, borderRadius: 8, marginBottom: 15 },
-  addBtn: { backgroundColor: '#4caf50', padding: 15, borderRadius: 8, alignItems: 'center' },
-  chip: { padding: 8, borderWidth: 1, borderColor: '#ddd', borderRadius: 20, marginRight: 10, flex:1, alignItems:'center' },
+  form: { padding: 20, borderRadius: 10, elevation: 2, marginBottom: 50 },
+  formHeader: { fontWeight: 'bold', fontSize: 16, marginBottom: 5 },
+  input: { borderWidth: 1, padding: 10, borderRadius: 8, marginBottom: 15 },
+  addBtn: { backgroundColor: '#673ab7', padding: 15, borderRadius: 8, alignItems: 'center' },
+  chip: { padding: 10, borderWidth: 1, borderRadius: 20, marginRight: 10, flex:1, alignItems:'center' },
   chipActive: { backgroundColor: '#2196f3', borderColor: '#2196f3' },
+  row: { flexDirection: 'row' }
 });

@@ -16,9 +16,10 @@ export default function LoginScreen({ navigation }) {
     
     if (res.length > 0) {
       const user = res[0];
+      // FIX: Just call login(). The navigator handles the redirect.
       login(user); 
       await logAudit(user.username, 'LOGIN', 'User logged into the system');
-      navigation.replace('MainTabs'); 
+      // navigation.replace('MainTabs'); <--- REMOVED
     } else {
       Alert.alert("Failed", "Invalid Username or Password");
     }
@@ -35,7 +36,7 @@ export default function LoginScreen({ navigation }) {
         <TextInput 
           style={styles.input} 
           placeholder="Username" 
-          placeholderTextColor="#999" // ✅ FIX ADDED
+          placeholderTextColor="#999"
           value={username} 
           onChangeText={setUsername} 
           autoCapitalize="none"
@@ -43,7 +44,7 @@ export default function LoginScreen({ navigation }) {
         <TextInput 
           style={styles.input} 
           placeholder="Password" 
-          placeholderTextColor="#999" // ✅ FIX ADDED
+          placeholderTextColor="#999"
           value={password} 
           onChangeText={setPassword} 
           secureTextEntry 
@@ -62,7 +63,7 @@ const styles = StyleSheet.create({
   card: { backgroundColor: 'white', padding: 30, borderRadius: 15, alignItems: 'center', elevation: 5 },
   iconCircle: { width: 80, height: 80, backgroundColor: '#2196f3', borderRadius: 40, justifyContent: 'center', alignItems: 'center', marginBottom: 20, marginTop: -60, borderWidth:4, borderColor:'white' },
   title: { fontSize: 24, fontWeight: 'bold', marginBottom: 20, color: '#333' },
-  input: { width: '100%', borderBottomWidth: 1, borderColor: '#ddd', padding: 10, marginBottom: 20, fontSize: 16, color: '#000' }, // Added color: #000
+  input: { width: '100%', borderBottomWidth: 1, borderColor: '#ddd', padding: 10, marginBottom: 20, fontSize: 16, color: '#000' }, 
   btn: { backgroundColor: '#2196f3', width: '100%', padding: 15, borderRadius: 8, alignItems: 'center' },
   btnText: { color: 'white', fontWeight: 'bold', fontSize: 16 }
 });
