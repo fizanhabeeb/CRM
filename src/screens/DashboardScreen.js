@@ -2,17 +2,13 @@ import React, { useState, useContext } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, Alert, Modal, TextInput } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { db } from '../database/db';
-import { AuthContext } from '../context/AuthContext'; 
-import * as FileSystem from 'expo-file-system'; 
-import * as Sharing from 'expo-sharing';
-import * as DocumentPicker from 'expo-document-picker';
+import { db } from '../database/db'; //
+import { AuthContext } from '../context/AuthContext'; //
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function DashboardScreen({ navigation }) {
   const { user, logout, isDarkMode } = useContext(AuthContext);
   const [stats, setStats] = useState({ totalSales: 0, creditOutstanding: 0, totalTxns: 0 });
-  // Removed prediction state
   const [alerts, setAlerts] = useState([]);
   const [activeShift, setActiveShift] = useState(null);
   
@@ -40,8 +36,6 @@ export default function DashboardScreen({ navigation }) {
         totalTxns: salesRes[0]?.count || 0,
         creditOutstanding: creditRes[0]?.outstanding || 0
       });
-
-      // Removed Demand Prediction Calculation logic
 
       const shiftRes = await db.getAllAsync('SELECT * FROM shifts WHERE user_id = ? AND status = "OPEN"', [user.id]);
       if(shiftRes.length > 0) setActiveShift(shiftRes[0]);
@@ -90,36 +84,6 @@ export default function DashboardScreen({ navigation }) {
 
   useFocusEffect(React.useCallback(() => { fetchStats(); checkDailyPrice(); }, []));
 
-  // ☁️ BACKUP
-  const exportDatabase = async () => {
-    try {
-      const dbName = 'fuel_crm_v9.db'; // Updated DB Name
-      const sourceUri = `${FileSystem.documentDirectory}SQLite/${dbName}`;
-      const targetUri = `${FileSystem.cacheDirectory}${dbName}`;
-      await FileSystem.copyAsync({ from: sourceUri, to: targetUri });
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(targetUri, { dialogTitle: 'Backup DB', mimeType: 'application/x-sqlite3', UTI: 'public.database' });
-      }
-    } catch (error) { Alert.alert("Backup Failed", error.message); }
-  };
-
-  // 🔄 RESTORE
-  const restoreDatabase = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, type: '*/*' });
-      if (result.canceled) return;
-      Alert.alert("⚠️ Restore DB", "This will replace current data. Continue?", [
-          { text: "Cancel", style: "cancel" },
-          { text: "Restore", style: 'destructive', onPress: async () => {
-              const dbName = 'fuel_crm_v9.db';
-              await FileSystem.deleteAsync(`${FileSystem.documentDirectory}SQLite/${dbName}`, { idempotent: true });
-              await FileSystem.copyAsync({ from: result.assets[0].uri, to: `${FileSystem.documentDirectory}SQLite/${dbName}` });
-              Alert.alert("Success", "Restored! Restart app.");
-          }}
-      ]);
-    } catch (err) { console.log(err); }
-  };
-
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]}>
       <ScrollView>
@@ -157,8 +121,6 @@ export default function DashboardScreen({ navigation }) {
          </View>
       </TouchableOpacity>
       
-      {/* Removed Prediction Card View */}
-
       <View style={styles.cardContainer}>
         <View style={[styles.card, { backgroundColor: isDarkMode ? '#1a237e' : '#e3f2fd' }]}>
           <Text style={[styles.cardLabel, { color: isDarkMode ? '#bbb' : '#555' }]}>Total Revenue</Text>
@@ -204,20 +166,6 @@ export default function DashboardScreen({ navigation }) {
             <Ionicons name="settings" size={24} color="#fff" />
             <Text style={styles.actionText}>Settings</Text>
         </TouchableOpacity>
-
-        {user?.role === 'Admin' && (
-           <>
-             <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#333'}]} onPress={exportDatabase}>
-               <Ionicons name="cloud-upload" size={24} color="#fff" />
-               <Text style={styles.actionText}>Backup</Text>
-             </TouchableOpacity>
-
-             <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#555'}]} onPress={restoreDatabase}>
-               <Ionicons name="cloud-download" size={24} color="#fff" />
-               <Text style={styles.actionText}>Restore</Text>
-             </TouchableOpacity>
-           </>
-        )}
       </View>
 
       {/* PRICE CONFIRM MODAL */}

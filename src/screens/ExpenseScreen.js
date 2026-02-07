@@ -1,12 +1,13 @@
 import React, { useState, useContext, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Alert } from 'react-native';
-import { db } from '../database/db';
-import { AuthContext } from '../context/AuthContext';
-import { Ionicons } from '@expo/vector-icons';
+import { db } from '../database/db'; 
+import { AuthContext } from '../context/AuthContext'; //
 import { useFocusEffect } from '@react-navigation/native';
 
 export default function ExpenseScreen() {
-  const { user } = useContext(AuthContext);
+  // ✅ FIX: Get 'theme' and 'isDarkMode' directly from AuthContext
+  const { user, theme, isDarkMode } = useContext(AuthContext);
+  
   const [expenses, setExpenses] = useState([]);
   const [form, setForm] = useState({ title: '', amount: '', category: 'General' });
 
@@ -28,17 +29,29 @@ export default function ExpenseScreen() {
     loadExpenses();
   };
 
+  // Dynamic Styles
+  const placeholderColor = isDarkMode ? '#888' : '#999';
+
   return (
-    <View style={styles.container}>
-      <View style={styles.form}>
-         <Text style={styles.header}>Add Expense</Text>
+    // ✅ FIX: Use theme.bg from context
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
+      
+      <View style={[styles.form, { backgroundColor: theme.card }]}>
+         <Text style={[styles.header, { color: theme.text }]}>Add Expense</Text>
          <TextInput 
-           style={styles.input} placeholder="Expense Title (e.g., Electricity)" 
-           value={form.title} onChangeText={t=>setForm({...form, title:t})}
+           style={[styles.input, { color: theme.text, borderColor: theme.border }]} 
+           placeholder="Expense Title (e.g., Electricity)" 
+           placeholderTextColor={placeholderColor}
+           value={form.title} 
+           onChangeText={t=>setForm({...form, title:t})}
          />
          <TextInput 
-           style={styles.input} placeholder="Amount (₹)" keyboardType="numeric"
-           value={form.amount} onChangeText={t=>setForm({...form, amount:t})}
+           style={[styles.input, { color: theme.text, borderColor: theme.border }]} 
+           placeholder="Amount (₹)" 
+           keyboardType="numeric"
+           placeholderTextColor={placeholderColor}
+           value={form.amount} 
+           onChangeText={t=>setForm({...form, amount:t})}
          />
          <TouchableOpacity style={styles.btn} onPress={addExpense}>
             <Text style={{color:'white', fontWeight:'bold'}}>Save Expense</Text>
@@ -49,10 +62,10 @@ export default function ExpenseScreen() {
         data={expenses}
         keyExtractor={item => item.id.toString()}
         renderItem={({item}) => (
-            <View style={styles.item}>
+            <View style={[styles.item, { backgroundColor: theme.card }]}>
                 <View>
-                    <Text style={{fontWeight:'bold'}}>{item.title}</Text>
-                    <Text style={{fontSize:12, color:'#666'}}>{item.date} • {item.category}</Text>
+                    <Text style={{fontWeight:'bold', color: theme.text}}>{item.title}</Text>
+                    <Text style={{fontSize:12, color: theme.subText}}>{item.date} • {item.category}</Text>
                 </View>
                 <Text style={{fontWeight:'bold', color:'#d32f2f'}}>- ₹{item.amount}</Text>
             </View>
@@ -63,10 +76,10 @@ export default function ExpenseScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5', padding: 15 },
-  form: { backgroundColor: 'white', padding: 15, borderRadius: 10, marginBottom: 20, elevation: 2 },
+  container: { flex: 1, padding: 15 },
+  form: { padding: 15, borderRadius: 10, marginBottom: 20, elevation: 2 },
   header: { fontWeight: 'bold', marginBottom: 15 },
-  input: { borderBottomWidth: 1, borderColor: '#eee', padding: 10, marginBottom: 15 },
+  input: { borderBottomWidth: 1, padding: 10, marginBottom: 15 },
   btn: { backgroundColor: '#f44336', padding: 12, borderRadius: 5, alignItems: 'center' },
-  item: { backgroundColor: 'white', padding: 15, borderRadius: 8, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }
+  item: { padding: 15, borderRadius: 8, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }
 });

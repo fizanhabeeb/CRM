@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, Switch, ActivityIndicator, FlatList, Modal } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, Switch, ActivityIndicator, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { db, logAudit } from '../database/db';
-import { AuthContext } from '../context/AuthContext';
+import { db, logAudit } from '../database/db'; //
+import { AuthContext } from '../context/AuthContext'; //
+
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import * as DocumentPicker from 'expo-document-picker';
 
 export default function SettingsScreen({ navigation }) {
-  const { user, isDarkMode, toggleTheme } = useContext(AuthContext); // 🌑 Get Theme Context
+  const { user, isDarkMode, toggleTheme } = useContext(AuthContext);
   
   const [prices, setPrices] = useState({ petrol: '', diesel: '' });
   const [loading, setLoading] = useState(false);
@@ -13,14 +17,14 @@ export default function SettingsScreen({ navigation }) {
   
   // User Management State
   const [newUser, setNewUser] = useState({ username: '', password: '', role: 'Operator' });
-  const [usersList, setUsersList] = useState([]); // Restored
+  const [usersList, setUsersList] = useState([]);
   
   // Edit Password Modal State
-  const [modalVisible, setModalVisible] = useState(false); // Restored
-  const [selectedUser, setSelectedUser] = useState(null); // Restored
-  const [newPassword, setNewPassword] = useState(''); // Restored
+  const [modalVisible, setModalVisible] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [newPassword, setNewPassword] = useState('');
 
-  // Dynamic Styles based on Dark Mode
+  // Dynamic Styles
   const themeStyles = {
     container: { backgroundColor: isDarkMode ? '#121212' : '#f5f5f5' },
     section: { backgroundColor: isDarkMode ? '#1e1e1e' : 'white' },
@@ -36,9 +40,7 @@ export default function SettingsScreen({ navigation }) {
 
   useEffect(() => {
     fetchCurrentPrices();
-    if (user?.role === 'Admin') {
-      fetchUsers(); // Restored
-    }
+    if (user?.role === 'Admin') fetchUsers();
   }, [user]);
 
   const fetchCurrentPrices = async () => {
@@ -52,82 +54,51 @@ export default function SettingsScreen({ navigation }) {
         petrol: p?.sell_price ? String(p.sell_price) : '100',
         diesel: d?.sell_price ? String(d.sell_price) : '90'
       });
-    } catch(e) { 
-      console.log("Error fetching prices:", e); 
-    } finally {
-      setLoading(false);
-    }
+    } catch(e) { console.log("Error fetching prices:", e); } finally { setLoading(false); }
   };
 
-  // Restored: Fetch Users List
   const fetchUsers = async () => {
     try {
       const res = await db.getAllAsync('SELECT * FROM users');
       setUsersList(res);
-    } catch (e) {
-      console.log("Error fetching users:", e);
-    }
+    } catch (e) { console.log("Error fetching users:", e); }
   };
 
   const updatePrices = async () => {
     if(!prices.petrol || !prices.diesel) return Alert.alert("Error", "Prices cannot be empty");
-    
-    const newPetrolPrice = parseFloat(prices.petrol);
-    const newDieselPrice = parseFloat(prices.diesel);
+    const newPetrol = parseFloat(prices.petrol);
+    const newDiesel = parseFloat(prices.diesel);
 
-    if (isNaN(newPetrolPrice) || isNaN(newDieselPrice)) {
-      return Alert.alert("Error", "Please enter valid numbers");
-    }
+    if (isNaN(newPetrol) || isNaN(newDiesel)) return Alert.alert("Error", "Enter valid numbers");
 
     try {
       setLoading(true);
-      await db.runAsync('UPDATE tanks SET sell_price = ? WHERE fuel_type = ?', [newPetrolPrice, 'Petrol']);
-      await db.runAsync('UPDATE tanks SET sell_price = ? WHERE fuel_type = ?', [newDieselPrice, 'Diesel']);
-      
-      if (user) {
-        await logAudit(user.username, 'SETTINGS_UPDATE', `Updated Prices: P=${newPetrolPrice}, D=${newDieselPrice}`);
-      }
-      
+      await db.runAsync('UPDATE tanks SET sell_price = ? WHERE fuel_type = ?', [newPetrol, 'Petrol']);
+      await db.runAsync('UPDATE tanks SET sell_price = ? WHERE fuel_type = ?', [newDiesel, 'Diesel']);
+      if (user) await logAudit(user.username, 'SETTINGS_UPDATE', `Updated Prices: P=${newPetrol}, D=${newDiesel}`);
       Alert.alert("✅ Success", "Fuel Prices Updated Globally");
     } catch (error) {
-      console.log("DB Error:", error);
-      Alert.alert("Failed", "Could not update database. " + error.message);
-    } finally {
-      setLoading(false);
-    }
+      Alert.alert("Failed", "Could not update: " + error.message);
+    } finally { setLoading(false); }
   };
 
   const createNewUser = async () => {
-    if (!newUser.username || !newUser.password) return Alert.alert("Error", "Please enter username and password");
-
+    if (!newUser.username || !newUser.password) return Alert.alert("Error", "Enter username/password");
     try {
       const check = await db.getAllAsync('SELECT * FROM users WHERE username = ?', [newUser.username]);
-      if (check.length > 0) {
-        return Alert.alert("Error", "Username already exists");
-      }
+      if (check.length > 0) return Alert.alert("Error", "Username already exists");
 
-      await db.runAsync('INSERT INTO users (username, password, role) VALUES (?, ?, ?)', 
-        [newUser.username, newUser.password, newUser.role]);
-
-      if (user) {
-        await logAudit(user.username, 'USER_CREATE', `Created new user: ${newUser.username} (${newUser.role})`);
-      }
-      
-      Alert.alert("Success", `User '${newUser.username}' created successfully!`);
+      await db.runAsync('INSERT INTO users (username, password, role) VALUES (?, ?, ?)', [newUser.username, newUser.password, newUser.role]);
+      Alert.alert("Success", "User Created");
       setNewUser({ username: '', password: '', role: 'Operator' });
-      fetchUsers(); // Refresh List
-    } catch (e) {
-      Alert.alert("Error", "Could not create user");
-      console.log(e);
-    }
+      fetchUsers();
+    } catch (e) { Alert.alert("Error", "Could not create user"); }
   };
 
-  // Restored: Delete User
   const deleteUser = (id, username) => {
-    if (id === user.id) return Alert.alert("Error", "You cannot delete yourself!");
-    
-    Alert.alert("Delete User", `Are you sure you want to delete ${username}?`, [
-      { text: "Cancel", style: "cancel" },
+    if (id === user.id) return Alert.alert("Error", "Cannot delete yourself");
+    Alert.alert("Delete", `Delete ${username}?`, [
+      { text: "Cancel" },
       { text: "Delete", style: 'destructive', onPress: async () => {
           await db.runAsync('DELETE FROM users WHERE id = ?', [id]);
           fetchUsers();
@@ -136,25 +107,69 @@ export default function SettingsScreen({ navigation }) {
     ]);
   };
 
-  // Restored: Open Edit Modal
-  const openEditModal = (u) => {
-    setSelectedUser(u);
-    setNewPassword(u.password); 
-    setModalVisible(true);
+  const savePassword = async () => {
+    if (!newPassword) return Alert.alert("Error", "Password empty");
+    await db.runAsync('UPDATE users SET password = ? WHERE id = ?', [newPassword, selectedUser.id]);
+    setModalVisible(false);
+    fetchUsers();
+    Alert.alert("Success", "Password Updated");
+    await logAudit(user.username, 'USER_UPDATE', `Changed password for: ${selectedUser.username}`);
   };
 
-  // Restored: Save New Password
-  const savePassword = async () => {
-    if (!newPassword) return Alert.alert("Error", "Password cannot be empty");
-    
+  // ✅ BACKUP
+  const handleBackup = async () => {
     try {
-      await db.runAsync('UPDATE users SET password = ? WHERE id = ?', [newPassword, selectedUser.id]);
-      setModalVisible(false);
-      fetchUsers();
-      Alert.alert("Success", "Password updated successfully");
-      await logAudit(user.username, 'USER_UPDATE', `Changed password for: ${selectedUser.username}`);
-    } catch (e) {
-      Alert.alert("Error", "Update failed");
+      setLoading(true);
+      const dbName = 'fuel_crm_v9.db';
+      const dbPath = `${FileSystem.documentDirectory}SQLite/${dbName}`;
+      const backupPath = `${FileSystem.documentDirectory}${dbName}`; 
+
+      const info = await FileSystem.getInfoAsync(dbPath);
+      if (!info.exists) {
+        Alert.alert("Error", "Database file not found at: " + dbPath);
+        return;
+      }
+
+      await FileSystem.copyAsync({ from: dbPath, to: backupPath });
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(backupPath, {
+          dialogTitle: 'Backup Database',
+          UTI: 'public.database',
+          mimeType: 'application/x-sqlite3'
+        });
+      } else {
+        Alert.alert("Success", "Backup saved to Documents folder (Sharing not available)");
+      }
+    } catch (error) {
+      Alert.alert("Backup Failed", error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 🔄 RESTORE (Moved from Dashboard)
+  const restoreDatabase = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, type: '*/*' });
+      if (result.canceled) return;
+      
+      Alert.alert(
+        "⚠️ DANGER: Restore Database", 
+        "This will DELETE all current data and replace it with the selected file.\n\nAre you sure?", 
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Restore & Restart", style: 'destructive', onPress: async () => {
+              const dbName = 'fuel_crm_v9.db';
+              await FileSystem.deleteAsync(`${FileSystem.documentDirectory}SQLite/${dbName}`, { idempotent: true });
+              await FileSystem.copyAsync({ from: result.assets[0].uri, to: `${FileSystem.documentDirectory}SQLite/${dbName}` });
+              Alert.alert("✅ Success", "Data restored successfully! Please restart the app.");
+          }}
+        ]
+      );
+    } catch (err) { 
+      console.log(err); 
+      Alert.alert("Error", "Restore failed: " + err.message);
     }
   };
 
@@ -164,7 +179,7 @@ export default function SettingsScreen({ navigation }) {
     <View style={{flex:1}}>
     <ScrollView style={[styles.container, themeStyles.container]}>
       
-      {/* 🎨 APPEARANCE SECTION */}
+      {/* 🎨 Appearance */}
       <View style={[styles.section, themeStyles.section]}>
         <Text style={[styles.sectionTitle, themeStyles.text]}>🎨 Appearance</Text>
         <View style={styles.rowBetween}>
@@ -172,125 +187,77 @@ export default function SettingsScreen({ navigation }) {
              <Ionicons name={isDarkMode ? "moon" : "sunny"} size={20} color={isDarkMode ? "#bb86fc" : "#f57c00"} />
              <Text style={[themeStyles.text, {marginLeft: 10}]}>Dark Mode</Text>
            </View>
-           <Switch 
-             value={isDarkMode} 
-             onValueChange={toggleTheme} 
-             trackColor={{ false: "#767577", true: "#bb86fc" }}
-             thumbColor={isDarkMode ? "#fff" : "#f4f3f4"}
-           />
+           <Switch value={isDarkMode} onValueChange={toggleTheme} trackColor={{ false: "#767577", true: "#bb86fc" }} thumbColor={isDarkMode ? "#fff" : "#f4f3f4"} />
         </View>
       </View>
 
-      {/* ⛽ PRICING SECTION */}
+      {/* ⛽ Fuel Pricing */}
       <View style={[styles.section, themeStyles.section]}>
-        <Text style={[styles.sectionTitle, themeStyles.text]}>⛽ Fuel Pricing Configuration</Text>
+        <Text style={[styles.sectionTitle, themeStyles.text]}>⛽ Fuel Pricing</Text>
         <Text style={[styles.subText, themeStyles.subText]}>This updates the default price in New Sale.</Text>
-        
-        {loading ? (
-          <ActivityIndicator size="large" color="#2196f3" style={{margin: 20}} />
-        ) : (
+        {loading ? <ActivityIndicator color="#2196f3" /> : (
           <>
             <View style={styles.inputRow}>
               <Text style={[styles.label, themeStyles.text]}>Petrol Price (₹):</Text>
-              <TextInput 
-                style={[styles.input, themeStyles.input]} 
-                value={prices.petrol} 
-                placeholderTextColor={isDarkMode ? "#888" : "#999"}
-                onChangeText={t => setPrices(prev => ({...prev, petrol:t}))} 
-                keyboardType="numeric" 
-                placeholder="0.00"
-              />
+              <TextInput style={[styles.input, themeStyles.input]} value={prices.petrol} onChangeText={t=>setPrices({...prices, petrol:t})} placeholder="0.00" placeholderTextColor="#888" keyboardType="numeric"/>
             </View>
-
             <View style={styles.inputRow}>
               <Text style={[styles.label, themeStyles.text]}>Diesel Price (₹):</Text>
-              <TextInput 
-                style={[styles.input, themeStyles.input]} 
-                value={prices.diesel} 
-                placeholderTextColor={isDarkMode ? "#888" : "#999"}
-                onChangeText={t => setPrices(prev => ({...prev, diesel:t}))} 
-                keyboardType="numeric" 
-                placeholder="0.00"
-              />
+              <TextInput style={[styles.input, themeStyles.input]} value={prices.diesel} onChangeText={t=>setPrices({...prices, diesel:t})} placeholder="0.00" placeholderTextColor="#888" keyboardType="numeric"/>
             </View>
-
-            <TouchableOpacity style={styles.saveBtn} onPress={updatePrices}>
-              <Text style={styles.saveBtnText}>Update Prices</Text>
-            </TouchableOpacity>
+            <TouchableOpacity style={styles.saveBtn} onPress={updatePrices}><Text style={styles.saveBtnText}>Update Prices</Text></TouchableOpacity>
           </>
         )}
       </View>
 
-      {/* 👤 ADMIN SECTION */}
+      {/* 📂 DATA MANAGEMENT (Backup & Restore) */}
+      <View style={[styles.section, themeStyles.section]}>
+        <Text style={[styles.sectionTitle, themeStyles.text]}>📂 Data Management</Text>
+        <Text style={[styles.subText, themeStyles.subText]}>Backup or restore your database.</Text>
+        
+        <TouchableOpacity style={[styles.saveBtn, {backgroundColor: '#ff9800'}]} onPress={handleBackup}>
+           <View style={{flexDirection:'row', alignItems:'center', justifyContent:'center'}}>
+             <Ionicons name="cloud-upload-outline" size={20} color="white" style={{marginRight:8}}/>
+             <Text style={styles.saveBtnText}>Backup Database</Text>
+           </View>
+        </TouchableOpacity>
+
+        {user?.role === 'Admin' && (
+          <TouchableOpacity style={[styles.saveBtn, {backgroundColor: '#555', marginTop: 15}]} onPress={restoreDatabase}>
+            <View style={{flexDirection:'row', alignItems:'center', justifyContent:'center'}}>
+              <Ionicons name="cloud-download-outline" size={20} color="white" style={{marginRight:8}}/>
+              <Text style={styles.saveBtnText}>Restore Database</Text>
+            </View>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* 👤 Admin Panel */}
       {user?.role === 'Admin' && (
         <View style={[styles.section, themeStyles.section]}>
           <Text style={[styles.sectionTitle, themeStyles.text]}>👤 User Management</Text>
           <Text style={[styles.subText, themeStyles.subText]}>Add new staff members to the system.</Text>
-
+          
           <View style={styles.inputRow}>
-            <Text style={[styles.label, themeStyles.text]}>New Username:</Text>
-            <TextInput 
-              style={[styles.input, themeStyles.input]} 
-              value={newUser.username}
-              placeholderTextColor={isDarkMode ? "#888" : "#999"}
-              onChangeText={t => setNewUser({...newUser, username: t})}
-              placeholder="e.g. manager1"
-              autoCapitalize="none"
-            />
+             <Text style={[styles.label, themeStyles.text]}>New Username:</Text>
+             <TextInput style={[styles.input, themeStyles.input]} value={newUser.username} onChangeText={t=>setNewUser({...newUser, username:t})} placeholder="e.g. manager1" placeholderTextColor="#888" autoCapitalize="none"/>
           </View>
 
           <View style={styles.inputRow}>
-            <Text style={[styles.label, themeStyles.text]}>Password:</Text>
-            <TextInput 
-              style={[styles.input, themeStyles.input]} 
-              value={newUser.password}
-              placeholderTextColor={isDarkMode ? "#888" : "#999"}
-              onChangeText={t => setNewUser({...newUser, password: t})}
-              placeholder="Enter password"
-              secureTextEntry
-            />
+             <Text style={[styles.label, themeStyles.text]}>Password:</Text>
+             <TextInput style={[styles.input, themeStyles.input]} value={newUser.password} onChangeText={t=>setNewUser({...newUser, password:t})} placeholder="Enter password" placeholderTextColor="#888" secureTextEntry/>
           </View>
-
-          <View style={styles.inputRow}>
-            <Text style={[styles.label, themeStyles.text]}>Role:</Text>
-            <View style={{flexDirection:'row'}}>
-              <TouchableOpacity 
-                style={[
-                  styles.roleBtn, 
-                  {borderColor: isDarkMode ? '#444' : '#ddd'},
-                  newUser.role === 'Operator' && styles.roleBtnActive
-                ]}
-                onPress={() => setNewUser({...newUser, role: 'Operator'})}
-              >
-                <Text style={[
-                  styles.roleText, 
-                  {color: isDarkMode ? '#aaa' : '#666'},
-                  newUser.role === 'Operator' && styles.roleTextActive
-                ]}>Operator</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={[
-                  styles.roleBtn, 
-                  {borderColor: isDarkMode ? '#444' : '#ddd'},
-                  newUser.role === 'Admin' && styles.roleBtnActive
-                ]}
-                onPress={() => setNewUser({...newUser, role: 'Admin'})}
-              >
-                <Text style={[
-                  styles.roleText, 
-                  {color: isDarkMode ? '#aaa' : '#666'},
-                  newUser.role === 'Admin' && styles.roleTextActive
-                ]}>Admin</Text>
-              </TouchableOpacity>
-            </View>
+          
+          <View style={[styles.inputRow, {flexDirection:'row'}]}>
+             <Text style={[styles.label, themeStyles.text, {marginRight:10, alignSelf:'center'}]}>Role:</Text>
+             {['Operator', 'Admin'].map(r => (
+               <TouchableOpacity key={r} onPress={()=>setNewUser({...newUser, role:r})} style={[styles.roleBtn, newUser.role===r && styles.roleBtnActive, {borderColor: isDarkMode?'#444':'#ddd'}]}>
+                 <Text style={[styles.roleText, newUser.role===r && styles.roleTextActive, {color: isDarkMode && newUser.role!==r ?'#aaa':'#666'}]}>{r}</Text>
+               </TouchableOpacity>
+             ))}
           </View>
+          <TouchableOpacity style={[styles.saveBtn, {backgroundColor:'#673ab7'}]} onPress={createNewUser}><Text style={styles.saveBtnText}>Create User</Text></TouchableOpacity>
 
-          <TouchableOpacity style={[styles.saveBtn, {backgroundColor:'#673ab7'}]} onPress={createNewUser}>
-              <Text style={styles.saveBtnText}>Create User</Text>
-          </TouchableOpacity>
-
-          {/* 📋 RESTORED: EXISTING USERS LIST */}
           <Text style={[styles.sectionTitle, themeStyles.text, {marginTop: 25}]}>📋 Existing Staff</Text>
           {usersList.map((u, i) => (
              <View key={i} style={[styles.userRow, themeStyles.userRow]}>
@@ -299,14 +266,8 @@ export default function SettingsScreen({ navigation }) {
                    <Text style={{color:'#999', fontSize:10}}>ID: {u.id}</Text>
                 </View>
                 <View style={{flexDirection:'row'}}>
-                   <TouchableOpacity onPress={() => openEditModal(u)} style={styles.iconBtn}>
-                      <Ionicons name="pencil" size={20} color="#2196f3" />
-                   </TouchableOpacity>
-                   {u.id !== user.id && (
-                     <TouchableOpacity onPress={() => deleteUser(u.id, u.username)} style={[styles.iconBtn, {backgroundColor:'#ffebee'}]}>
-                        <Ionicons name="trash" size={20} color="#d32f2f" />
-                     </TouchableOpacity>
-                   )}
+                   <TouchableOpacity onPress={() => { setSelectedUser(u); setNewPassword(u.password); setModalVisible(true); }} style={styles.iconBtn}><Ionicons name="pencil" size={20} color="#2196f3" /></TouchableOpacity>
+                   {u.id !== user.id && <TouchableOpacity onPress={() => deleteUser(u.id, u.username)} style={[styles.iconBtn, {backgroundColor:'#ffebee'}]}><Ionicons name="trash" size={20} color="#d32f2f" /></TouchableOpacity>}
                 </View>
              </View>
           ))}
@@ -323,7 +284,7 @@ export default function SettingsScreen({ navigation }) {
         <Text style={[styles.subText, themeStyles.subText]}>Current Rule: 1 Liter = 1 Point. 10 Points = ₹1 Discount.</Text>
       </View>
 
-      {/* ℹ️ ABOUT SECTION */}
+      {/* ℹ️ About & Help */}
       <View style={[styles.section, themeStyles.section]}>
         <Text style={[styles.sectionTitle, themeStyles.text]}>ℹ️ About & Help</Text>
         <View style={styles.infoRow}>
@@ -342,44 +303,19 @@ export default function SettingsScreen({ navigation }) {
 
     </ScrollView>
 
-    {/* ✏️ RESTORED: EDIT PASSWORD MODAL */}
-    <Modal
-        animationType="slide"
-        transparent={true}
-        visible={modalVisible}
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <View style={styles.centeredView}>
+    {/* Edit Password Modal */}
+    <Modal animationType="slide" transparent={true} visible={modalVisible} onRequestClose={()=>setModalVisible(false)}>
+       <View style={styles.centeredView}>
           <View style={[styles.modalView, {backgroundColor: isDarkMode ? '#1e1e1e' : 'white'}]}>
-            <Text style={[styles.modalTitle, themeStyles.text]}>Edit Password: {selectedUser?.username}</Text>
-            
-            <TextInput 
-              style={[styles.modalInput, themeStyles.input]}
-              placeholder="Enter New Password"
-              placeholderTextColor={isDarkMode ? '#888' : '#999'}
-              value={newPassword}
-              onChangeText={setNewPassword}
-            />
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity 
-                style={[styles.modalBtn, {backgroundColor: '#ff5252'}]} 
-                onPress={() => setModalVisible(false)}
-              >
-                <Text style={styles.modalBtnText}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={[styles.modalBtn, {backgroundColor: '#2196f3'}]} 
-                onPress={savePassword}
-              >
-                <Text style={styles.modalBtnText}>Update</Text>
-              </TouchableOpacity>
-            </View>
+             <Text style={[styles.modalTitle, themeStyles.text]}>Edit Password: {selectedUser?.username}</Text>
+             <TextInput style={[styles.modalInput, themeStyles.input]} value={newPassword} onChangeText={setNewPassword} placeholder="New Password" placeholderTextColor="#888"/>
+             <View style={styles.modalActions}>
+                <TouchableOpacity onPress={()=>setModalVisible(false)} style={[styles.modalBtn, {backgroundColor:'#ff5252'}]}><Text style={styles.modalBtnText}>Cancel</Text></TouchableOpacity>
+                <TouchableOpacity onPress={savePassword} style={[styles.modalBtn, {backgroundColor:'#2196f3'}]}><Text style={styles.modalBtnText}>Update</Text></TouchableOpacity>
+             </View>
           </View>
-        </View>
-      </Modal>
-
+       </View>
+    </Modal>
     </View>
   );
 }
@@ -401,10 +337,8 @@ const styles = StyleSheet.create({
   roleBtnActive: { backgroundColor: '#2196f3', borderColor:'#2196f3' },
   roleText: { },
   roleTextActive: { color: 'white', fontWeight:'bold' },
-  // List Styles
   userRow: { flexDirection:'row', justifyContent:'space-between', alignItems:'center', paddingVertical:10, borderBottomWidth:1 },
   iconBtn: { padding:8, borderRadius:50, backgroundColor:'#e3f2fd', marginLeft:10 },
-  // Modal Styles
   centeredView: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
   modalView: { width: '85%', borderRadius: 10, padding: 20, alignItems: 'center', elevation: 5 },
   modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
